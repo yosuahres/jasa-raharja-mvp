@@ -1,0 +1,10 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# extractor (python)
+extractor/.venv/
+extractor/data/
+__pycache__/
+.pytest_cache/
