@@ -1,0 +1,13 @@
+**/.DS_Store
+**/__pycache__
+.venv
+.pytest_cache
+tests
+data
+
+# Secrets reach the container through docker-compose env_file
+.env
+.env.*
+
+Dockerfile
+.dockerignore

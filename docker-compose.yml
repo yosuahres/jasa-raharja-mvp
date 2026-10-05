@@ -1,0 +1,79 @@
+# Runs on the majorsales VPS, beside the majorsales-binapatria stack. That stack's
+# reverse-proxy (Traefik: websecure, myresolver, the crowdsec middleware) routes the
+# dashboard, and its watchtower pulls new :prod images for both services here.
+# Nothing in this file publishes a port or starts a proxy of its own.
+#
+# On the server, once:   cp .env.docker.example .env        (domain)
+#                        cp extractor/.env.example extractor/.env  (Supabase secret key)
+# Then:                  docker compose pull && docker compose up -d
+
+name: jasa-raharja
+
+services:
+  extractor:
+    # (For local dev, comment `image` and uncomment `build`.)
+    image: ghcr.io/yosuahres/jasa-raharja-extractor:prod
+    # build:
+    #   context: extractor
+    restart: always
+    # Forwards SIGTERM to the worker so a restart doesn't wait out the kill timeout.
+    # A book stopped mid-way is requeued when the worker starts again.
+    init: true
+    env_file:
+      - extractor/.env
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    deploy:
+      # requeue_interrupted (app/worker.py) assumes one worker runs at a time.
+      replicas: 1
+      resources:
+        limits:
+          # A regulation listing many hospitals runs to ~3,000 pages.
+          memory: 2G
+
+  dashboard:
+    # (For local dev, comment `image` and uncomment `build`.)
+    image: ghcr.io/yosuahres/jasa-raharja-dashboard:prod
+    # build:
+    #   context: dashboard
+    #   args:
+    #     NEXT_PUBLIC_SUPABASE_URL: "${NEXT_PUBLIC_SUPABASE_URL}"
+    #     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}"
+    restart: always
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.jasaraharja.loadbalancer.server.port=3000"
+
+      # Router and middleware names share one namespace with the majorsales stack's
+      # labels, so every one here is prefixed jasaraharja-.
+      - "traefik.http.routers.jasaraharja.rule=Host(`${JR_DOMAIN:-jasaraharja.majorsaleshub.com}`)"
+      - "traefik.http.routers.jasaraharja.entrypoints=websecure"
+      - "traefik.http.routers.jasaraharja.tls.certresolver=myresolver"
+      - "traefik.http.routers.jasaraharja.service=jasaraharja"
+      - "traefik.http.routers.jasaraharja.middlewares=crowdsec@docker,jasaraharja-ratelimit@docker"
+
+      - "traefik.http.middlewares.jasaraharja-ratelimit.ratelimit.average=600"
+      - "traefik.http.middlewares.jasaraharja-ratelimit.ratelimit.period=1m"
+      - "traefik.http.middlewares.jasaraharja-ratelimit.ratelimit.burst=200"
+
+      # STATIC ASSETS - CROWDSEC ONLY, NO RATE LIMIT
+      - "traefik.http.routers.jasaraharja-static.rule=Host(`${JR_DOMAIN:-jasaraharja.majorsaleshub.com}`) && (PathPrefix(`/_next/`) || Path(`/favicon.ico`) || Path(`/apple-icon.png`) || Path(`/databiota-logo.png`))"
+      - "traefik.http.routers.jasaraharja-static.entrypoints=websecure"
+      - "traefik.http.routers.jasaraharja-static.tls.certresolver=myresolver"
+      - "traefik.http.routers.jasaraharja-static.priority=95"
+      - "traefik.http.routers.jasaraharja-static.service=jasaraharja"
+      - "traefik.http.routers.jasaraharja-static.middlewares=crowdsec@docker"
+
+      - "com.centurylinklabs.watchtower.enable=true"
+    expose:
+      - "3000"
+
+networks:
+  default:
+    name: project-network
+    external: true

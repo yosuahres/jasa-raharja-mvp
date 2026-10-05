@@ -40,19 +40,55 @@ A tariff document is the only input. Upload it from **Upload dokumen** (top bar)
 1. **Upload.** Drop the PDF. It goes to Storage and the worker picks it up.
 2. **Read.** The worker finds which hospital the document is about (a regulation listing many hospitals:
    the one the file name names, else the one with the most pages) and extracts all of that hospital's
-   rows. It reads the hospital's profile from the text: name, city and province, year, address, type,
+   rows. It reads the hospital's profile from the text: name, city and province, year, address,
    ownership and whether it is a partner ("Rekanan"). Facilities and specialists are recognised from the
-   rows. Nothing is looked up elsewhere; a field the document doesn't print stays empty.
+   rows; how many and their hours aren't printed, so they stay empty. Nothing is looked up elsewhere; a
+   field the document doesn't print stays empty.
 3. **File.** Every row is kept and filed under a kind of service (tindakan operatif, radiologi,
    laboratorium, kamar & rawat inap, …) from its name and the headings it sits under
    (`extractor/app/categories.py`). There is no predefined list of injury cases or procedures.
 4. **Preview and save.** The dashboard shows every field with where it was read, and every row by
    category. Saving creates the hospital, or updates the one with the same name, and publishes.
 
-**Rumah Sakit** ranks hospitals in general: specialists and facilities recognised, how many kinds of
-service the document prices, and emergency access. **Cari Rujukan** takes what is needed in words
+**Rumah Sakit** ranks hospitals on their prices against other hospitals' and on what their document
+shows they offer: specialists and facilities recognised, how many kinds of service it prices, and an
+emergency room and ambulance. That ranking, split into quarters, is the hospital's tipe (A to D); it is
+not read from the document. **Cari Rujukan** takes what is needed in words
 ("kraniotomi", "CT scan kepala") and a city, finds the rows that name it in every hospital's document, and
 ranks those hospitals by that price against the median, their general score, and same city / province.
+
+## Deploying (VPS)
+
+Both services run on the majorsales VPS beside the `majorsales-binapatria` stack, which already runs
+Traefik and Watchtower on the external `project-network`. `docker-compose.yml` here starts only the
+dashboard and the worker: Traefik serves the dashboard at `JR_DOMAIN` (default
+`jasaraharja.majorsaleshub.com`, under the existing wildcard) with its `myresolver` certificate and
+`crowdsec` middleware. The worker has no port; it polls Supabase.
+
+Every push to `main` runs the extractor tests and the dashboard lint, then builds
+`ghcr.io/yosuahres/jasa-raharja-extractor:prod` and `ghcr.io/yosuahres/jasa-raharja-dashboard:prod`
+(`.github/workflows/deploy.yml`). Watchtower pulls new images within 30 seconds.
+
+Once, before the first deploy:
+
+1. GitHub repository → Settings → Secrets → Actions: add `NEXT_PUBLIC_SUPABASE_URL` and
+   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. They are inlined into the dashboard image when it is built.
+2. Let the VPS pull the images. The server and its Watchtower are logged in to `ghcr.io` as the majorsales
+   account (`/home/majorsales/.docker/config.json`), so give that account read access to both packages
+   (package → Package settings → Manage access), or make the packages public.
+3. On the server:
+
+   ```bash
+   git clone https://github.com/yosuahres/jasa-raharja-mvp.git jasa-raharja && cd jasa-raharja
+   cp .env.docker.example .env                      # JR_DOMAIN
+   cp extractor/.env.example extractor/.env         # SUPABASE_URL, SUPABASE_SECRET_KEY
+   docker compose pull && docker compose up -d
+   ```
+4. Supabase → Authentication → URL Configuration: set the Site URL to `https://<JR_DOMAIN>` so sign-up
+   confirmation emails link to the server, not localhost.
+
+A change to `docker-compose.yml` (a label, the domain) needs `git pull && docker compose up -d` on the
+server; an image swap doesn't deliver it. Logs: `docker compose logs -f extractor`.
 
 ## Extracting a tariff book
 
