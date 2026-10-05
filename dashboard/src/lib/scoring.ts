@@ -1,5 +1,6 @@
+import type { AccidentStep } from "./accident-cases";
 import { CARE_CATEGORIES } from "./categories";
-import type { Dataset, Hospital, TariffLine, Tier } from "./data/types";
+import type { Dataset, Hospital, TariffLine, Tier, Tipe, TreatmentLine } from "./data/types";
 
 /** How the general score weighs each part. */
 export const WEIGHTS = {
@@ -16,17 +17,9 @@ export type Scores = {
   facility: number;
   /** Kinds of care its document has tariffs for. */
   services: number;
-  /** 24-hour emergency room and ambulances. */
+  /** Emergency room and ambulance in its document. */
   access: number;
 };
-
-// Credit for an item that is there at all, there 24 hours, and in depth.
-const PRESENT_CREDIT = 0.55;
-const ROUND_THE_CLOCK_CREDIT = 0.2;
-const DEPTH_CREDIT = 0.25;
-
-const SPECIALIST_DEPTH_TARGET = 3;
-const FACILITY_DEPTH_TARGET: Record<string, number> = { ok: 6, icu: 12, hcu: 8, ambulans: 4, "c-arm": 2, rontgen: 2 };
 
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 
@@ -63,37 +56,32 @@ export const originsOf = (hospitals: Hospital[]): Origin[] => {
   return [...byCity.values()].sort((a, b) => a.city.localeCompare(b.city));
 };
 
-/** Share of the items that are there, with extra credit for 24 hours and depth. */
-const coverage = (ids: string[], lookup: (id: string) => { present: boolean; roundTheClock: boolean; depth: number }) => {
-  if (ids.length === 0) return 0;
-  const earned = ids.reduce((sum, id) => {
-    const { present, roundTheClock, depth } = lookup(id);
-    return sum + (present ? PRESENT_CREDIT + (roundTheClock ? ROUND_THE_CLOCK_CREDIT : 0) + DEPTH_CREDIT * Math.min(depth, 1) : 0);
-  }, 0);
-  return (earned / ids.length) * 100;
-};
+/** Share of the items its document shows, 0–100. Documents don't print how many or their hours, so presence is all that counts. */
+const coverage = (ids: string[], present: (id: string) => boolean) =>
+  ids.length === 0 ? 0 : (ids.filter(present).length / ids.length) * 100;
 
-// How quickly a victim gets into care once there: 24h IGD and ambulance fleet.
-const serviceAccess = (hospital: Hospital) => {
-  const igd = hospital.facilities.find((f) => f.facilityId === "igd");
-  const ambulances = hospital.facilities.find((f) => f.facilityId === "ambulans")?.qty ?? 0;
-  return (igd?.available24h ? 50 : igd ? 25 : 0) + 50 * Math.min(ambulances / 4, 1);
-};
+const hasFacility = (hospital: Hospital, id: string) => hospital.facilities.some((f) => f.facilityId === id);
 
-export type Placing = { tier: Tier; /** 1 for the best; equal scores share a place. */ rank: number; of: number };
+// How quickly a victim gets into care once there: an emergency room and an ambulance.
+const serviceAccess = (hospital: Hospital) => (hasFacility(hospital, "igd") ? 50 : 0) + (hasFacility(hospital, "ambulans") ? 50 : 0);
+
+export type Placing<Band extends string = Tier> = { tier: Band; /** 1 for the best; equal scores share a place. */ rank: number; of: number };
+
+const THIRDS: Tier[] = ["A", "B", "C"];
+const QUARTERS: Tipe[] = ["A", "B", "C", "D"];
 
 /**
- * Tiers are relative: the items are ranked against each other on their score, and the top third
- * is Tier A, the middle third Tier B, the bottom third Tier C. Equal scores (to the point) share a place.
+ * Bands are relative: the items are ranked against each other on their score and split evenly into
+ * the bands, best first (thirds: top third A, middle B, bottom C). Equal scores (to the point) share a place.
  */
-const placings = <T>(items: T[], score: (item: T) => number): Map<T, Placing> => {
+const placings = <T, Band extends string>(items: T[], score: (item: T) => number, bands: Band[]): Map<T, Placing<Band>> => {
   const sorted = [...items].sort((a, b) => score(b) - score(a));
   const rounded = sorted.map((item) => Math.round(score(item)));
   return new Map(
     sorted.map((item, index) => {
       const place = rounded.indexOf(rounded[index]);
-      const share = place / sorted.length;
-      return [item, { tier: share < 1 / 3 ? "A" : share < 2 / 3 ? "B" : "C", rank: place + 1, of: sorted.length }];
+      const band = bands[Math.floor((place / sorted.length) * bands.length)];
+      return [item, { tier: band, rank: place + 1, of: sorted.length }];
     }),
   );
 };
@@ -101,17 +89,11 @@ const placings = <T>(items: T[], score: (item: T) => number): Map<T, Placing> =>
 export const generalScores = (hospital: Hospital, data: Dataset): Scores => ({
   clinical: coverage(
     data.catalog.specialties.map((s) => s.id),
-    (id) => {
-      const member = hospital.staff.find((s) => s.specialtyId === id && s.headcount > 0);
-      return { present: Boolean(member), roundTheClock: member?.onCall24h ?? false, depth: (member?.headcount ?? 0) / SPECIALIST_DEPTH_TARGET };
-    },
+    (id) => hospital.staff.some((s) => s.specialtyId === id),
   ),
   facility: coverage(
     data.catalog.facilities.map((f) => f.id),
-    (id) => {
-      const item = hospital.facilities.find((f) => f.facilityId === id && f.qty > 0);
-      return { present: Boolean(item), roundTheClock: item?.available24h ?? false, depth: (item?.qty ?? 0) / (FACILITY_DEPTH_TARGET[id] ?? 1) };
-    },
+    (id) => hasFacility(hospital, id),
   ),
   services: (CARE_CATEGORIES.filter((c) => (hospital.tariffBook?.categories[c] ?? 0) > 0).length / CARE_CATEGORIES.length) * 100,
   access: serviceAccess(hospital),
@@ -130,7 +112,7 @@ const PRICE_BY_TIER: Record<Tier, PriceLevel> = { A: "murah", B: "wajar", C: "ma
 const SERVICE_BY_TIER: Record<Tier, ServiceLevel> = { A: "lengkap", B: "cukup", C: "terbatas" };
 
 /** 1 for the best place, 0 for the last; 1 when there is nothing to compare with. */
-const percentile = ({ rank, of }: Placing) => (of === 1 ? 1 : 1 - (rank - 1) / (of - 1));
+const percentile = ({ rank, of }: Placing<string>) => (of === 1 ? 1 : 1 - (rank - 1) / (of - 1));
 
 const priceReason = ({ ratio, compared }: { ratio: number; compared: number }) => {
   const share = Math.round(Math.abs(1 - ratio) * 100);
@@ -151,19 +133,19 @@ export type HospitalSummary = {
   /** Prices against the other hospitals'; null until another hospital's document shares rows with its. */
   price: Rating<PriceLevel> | null;
   services: Rating<ServiceLevel>;
-  /** Harga and Layanan together, 0–100 by place among the hospitals: what the rank and tier come from. */
+  /** Harga and Layanan together, 0–100 by place among the hospitals: what the rank and tipe come from. */
   composite: number;
-  /** Against every hospital with a published document; null until this one has one. */
-  tier: Tier | null;
-  placing: Placing | null;
+  /** Its quarter among every hospital with a published document; null until this one has one. */
+  tipe: Tipe | null;
+  placing: Placing<Tipe> | null;
   dataExpired: boolean;
 };
 
 /**
  * Every hospital rated against the others, like Bluebook's price and quality lights: Harga by its
  * prices on rows other hospitals' documents name the same way, Layanan by what its document shows it
- * offers. Each is split into thirds; the rank and tier weigh the two equally (Layanan alone until
- * prices can be compared).
+ * offers. Each is split into thirds; the rank weighs the two equally (Layanan alone until prices can
+ * be compared) and is split into quarters, Tipe A to D.
  */
 export const allSummaries = (data: Dataset): HospitalSummary[] => {
   const published = data.hospitals.filter((h) => h.tariffBook);
@@ -171,8 +153,9 @@ export const allSummaries = (data: Dataset): HospitalSummary[] => {
   const pricePlaces = placings(
     published.filter((h) => h.priceIndex),
     (h) => 100 / (h.priceIndex?.ratio ?? 1),
+    THIRDS,
   );
-  const servicePlaces = placings(published, (h) => compositeOf(scores.get(h) ?? generalScores(h, data)));
+  const servicePlaces = placings(published, (h) => compositeOf(scores.get(h) ?? generalScores(h, data)), THIRDS);
 
   const rated = data.hospitals.map((hospital) => {
     const pricePlace = pricePlaces.get(hospital);
@@ -190,10 +173,11 @@ export const allSummaries = (data: Dataset): HospitalSummary[] => {
   const overall = placings(
     rated.filter((r) => r.hospital.tariffBook),
     (r) => r.composite,
+    QUARTERS,
   );
   return rated.map((r) => {
     const placing = overall.get(r) ?? null;
-    return { ...r, tier: placing?.tier ?? null, placing };
+    return { ...r, tipe: placing?.tier ?? null, placing };
   });
 };
 
@@ -209,7 +193,7 @@ export const summarize = (hospital: Hospital, data: Dataset): HospitalSummary =>
 export type TreatmentMatch = {
   summary: HospitalSummary;
   /** The row that names the treatment most plainly; the others are counted. */
-  line: TariffLine & { priceMin: number; priceMax: number };
+  line: SearchedLine & { priceMin: number; priceMax: number };
   otherRows: number;
   priceMid: number;
   medianPrice: number;
@@ -229,9 +213,15 @@ const costScore = (priceRatio: number) => clamp(((1.5 - priceRatio) / 0.8) * 100
 
 const wordCount = (text: string) => text.split(/\s+/).filter(Boolean).length;
 
-type PricedLine = TariffLine & { bookId: string; priceMin: number; priceMax: number };
+/** A row found for a treatment; `treatmentName` when it was picked as a tindakan rather than searched by its words. */
+type SearchedLine = TariffLine & { bookId: string; treatmentName?: string };
 
-const isPriced = (line: TariffLine & { bookId: string }): line is PricedLine => line.priceMin !== null && line.priceMax !== null;
+type PricedLine = SearchedLine & { priceMin: number; priceMax: number };
+
+const isPriced = (line: SearchedLine): line is PricedLine => line.priceMin !== null && line.priceMax !== null;
+
+/** What a row calls the treatment: the tindakan it prices, or else its own name. */
+export const treatmentNameOf = (line: SearchedLine) => line.treatmentName ?? line.rawName;
 
 const midOf = (line: { priceMin: number; priceMax: number }) => (line.priceMin + line.priceMax) / 2;
 
@@ -239,12 +229,12 @@ const midOf = (line: { priceMin: number; priceMax: number }) => (line.priceMin +
  * Ranks the hospitals whose current document has rows found for a search: their general
  * score, the price of their plainest matching row against the other hospitals', and how near.
  */
-export const rankForTreatment = (lines: (TariffLine & { bookId: string })[], origin: Origin, data: Dataset): TreatmentMatch[] => {
+export const rankForTreatment = (lines: SearchedLine[], origin: Origin, data: Dataset): TreatmentMatch[] => {
   const priced = lines.filter(isPriced);
   const found = data.hospitals.flatMap((hospital) => {
     const own = priced
       .filter((l) => l.bookId === hospital.tariffBook?.id)
-      .sort((a, b) => wordCount(a.rawName) - wordCount(b.rawName) || a.priceMin - b.priceMin);
+      .sort((a, b) => wordCount(treatmentNameOf(a)) - wordCount(treatmentNameOf(b)) || a.priceMin - b.priceMin);
     return own.length ? [{ hospital, line: own[0], otherRows: own.length - 1 }] : [];
   });
   if (found.length === 0) return [];
@@ -270,7 +260,7 @@ export const rankForTreatment = (lines: (TariffLine & { bookId: string })[], ori
 
       return { summary, line, otherRows, priceMid, medianPrice, savingVsMedian, locality, composite, strengths, notes };
     });
-  const placed = placings(matches, (m) => m.composite);
+  const placed = placings(matches, (m) => m.composite, THIRDS);
   return matches
     .flatMap((m): TreatmentMatch[] => {
       const placing = placed.get(m);
@@ -285,3 +275,91 @@ export const rankForTreatment = (lines: (TariffLine & { bookId: string })[], ori
  */
 export const fairPriceLevel = (savingVsMedian: number): PriceLevel =>
   savingVsMedian >= 0 ? "murah" : savingVsMedian >= -0.2 ? "wajar" : "mahal";
+
+// ------------------------------------------------------------------ recommending for an accident case
+
+/** One tindakan of an accident case as a hospital's document prices it, its rows taken together. */
+export type CaseTreatment = {
+  key: string;
+  /** As its document prints it, the plainest of its rows. */
+  name: string;
+  /** Null when none of its rows is a plain number. */
+  priceMin: number | null;
+  priceMax: number | null;
+};
+
+/** What a hospital's document prices of one step of an accident case. */
+export type CaseStepCover = { label: string; treatments: CaseTreatment[] };
+
+/** A hospital whose document prices some of what an accident case needs, and how it compares. */
+export type CaseMatch = {
+  summary: HospitalSummary;
+  /** Every step any hospital's document has tindakan for, in the case's order. */
+  steps: CaseStepCover[];
+  /** Steps it has at least one tindakan for. */
+  covered: number;
+  locality: Locality;
+  composite: number;
+  /** Against the other hospitals that have something for the case. */
+  tier: Tier;
+  placing: Placing;
+};
+
+const minOrNull = (values: number[]) => (values.length ? Math.min(...values) : null);
+const maxOrNull = (values: number[]) => (values.length ? Math.max(...values) : null);
+
+const caseTreatmentOf = (key: string, rows: TreatmentLine[]): CaseTreatment => {
+  const plainest = [...rows].sort((a, b) => wordCount(a.treatmentName) - wordCount(b.treatmentName))[0];
+  return {
+    key,
+    name: plainest?.treatmentName ?? key,
+    priceMin: minOrNull(rows.flatMap((l) => (l.priceMin === null ? [] : [l.priceMin]))),
+    priceMax: maxOrNull(rows.flatMap((l) => (l.priceMax === null ? [] : [l.priceMax]))),
+  };
+};
+
+/**
+ * Ranks the hospitals for a whole accident case: how many of its steps their current document has
+ * tindakan for (the most), their general score, and how near. Steps no document has anything for
+ * are left out; hospitals with nothing for the case are too.
+ */
+export const rankForCase = (lines: TreatmentLine[], caseSteps: AccidentStep[], origin: Origin, data: Dataset): CaseMatch[] => {
+  const steps = caseSteps.filter((step) => lines.some((l) => step.keys.includes(l.key)));
+  if (steps.length === 0) return [];
+  const summaries = allSummaries(data);
+
+  const found = data.hospitals.flatMap((hospital) => {
+    const own = lines.filter((l) => l.bookId === hospital.tariffBook?.id);
+    if (own.length === 0) return [];
+    const covers = steps.map(
+      (step): CaseStepCover => ({
+        label: step.label,
+        treatments: step.keys.flatMap((key) => {
+          const rows = own.filter((l) => l.key === key);
+          return rows.length ? [caseTreatmentOf(key, rows)] : [];
+        }),
+      }),
+    );
+    return [{ hospital, covers, keys: new Set(own.map((l) => l.key)).size }];
+  });
+  if (found.length === 0) return [];
+  const mostKeys = Math.max(...found.map((f) => f.keys));
+
+  const matches = found.map(({ hospital, covers, keys }) => {
+    const summary = summaries.find((s) => s.hospital.id === hospital.id) ?? summarize(hospital, data);
+    const covered = covers.filter((c) => c.treatments.length > 0).length;
+    // Steps count most: a hospital that can do the operation beats one with many small tindakan.
+    const coverage = 70 * (covered / steps.length) + 30 * (keys / mostKeys);
+    const locality = localityOf(hospital, origin);
+    const access = 0.6 * LOCALITY_SCORE[locality] + 0.4 * serviceAccess(hospital);
+    const composite = 0.45 * coverage + 0.35 * summary.composite + 0.2 * access;
+    return { summary, steps: covers, covered, locality, composite };
+  });
+  const placed = placings(matches, (m) => m.composite, THIRDS);
+  return matches
+    .flatMap((m): CaseMatch[] => {
+      const placing = placed.get(m);
+      return placing ? [{ ...m, tier: placing.tier, placing }] : [];
+    })
+    .sort((a, b) => a.placing.rank - b.placing.rank || b.composite - a.composite);
+};

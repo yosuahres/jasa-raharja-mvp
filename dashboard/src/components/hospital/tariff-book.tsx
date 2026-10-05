@@ -55,7 +55,7 @@ export function TariffLinesTable({
   );
 
   return (
-    <Card className={cn("gap-4 pb-2 sm:[--card-spacing:--spacing(5)]", className)}>
+    <Card className={cn("gap-4 pb-2", className)}>
       <CardHeader className="gap-3">
         <CardTitle>Baris tarif</CardTitle>
         <nav aria-label="Jenis layanan" className="-mx-(--card-spacing) overflow-x-auto px-(--card-spacing) [scrollbar-width:none]">
@@ -165,7 +165,7 @@ export function TariffBookSource({
   ];
 
   return (
-    <Card className="sm:[--card-spacing:--spacing(5)]">
+    <Card>
       <CardHeader>
         <CardTitle>Sumber</CardTitle>
       </CardHeader>

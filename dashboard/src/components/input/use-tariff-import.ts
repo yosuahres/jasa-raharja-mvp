@@ -13,6 +13,8 @@ export type ImportBook = {
   fileName: string;
   status: "queued" | "extracting" | "review" | "published" | "failed";
   error: string | null;
+  /** Set once the upload is saved as a hospital's tariffs. */
+  hospitalId: string | null;
   pagesTotal: number | null;
   pagesDone: number;
   scannedPages: number[];
@@ -29,21 +31,22 @@ export type ImportBook = {
 export type ImportPreview = { book: ImportBook; totalRows: number; flaggedRows: number };
 
 export type ImportState =
-  | { phase: "idle" }
+  | { phase: "idle"; error?: string }
   | { phase: "loading" }
-  | { phase: "uploading"; fileName: string }
+  | { phase: "uploading" }
   | { phase: "processing"; book: ImportBook }
   | { phase: "failed"; book: ImportBook | null; error: string }
   | ({ phase: "preview" } & ImportPreview);
 
 const BOOK_SELECT =
-  "id, source_file, status, error, pages_total, pages_done, scanned_pages, facility_filter, detected_profile, document_hospitals, detected_facilities, detected_specialties, category_counts";
+  "id, source_file, status, error, hospital_id, pages_total, pages_done, scanned_pages, facility_filter, detected_profile, document_hospitals, detected_facilities, detected_specialties, category_counts";
 
 type BookRow = {
   id: string;
   source_file: string;
   status: ImportBook["status"];
   error: string | null;
+  hospital_id: string | null;
   pages_total: number | null;
   pages_done: number;
   scanned_pages: number[];
@@ -60,6 +63,7 @@ const toBook = (row: BookRow): ImportBook => ({
   fileName: row.source_file,
   status: row.status,
   error: row.error,
+  hospitalId: row.hospital_id,
   pagesTotal: row.pages_total,
   pagesDone: row.pages_done,
   scannedPages: row.scanned_pages,
@@ -132,7 +136,7 @@ export function useTariffImport(initialBookId: string | null) {
   /** Upload the file and queue it; the worker picks it up from there. */
   const start = useCallback(
     async (file: File) => {
-      setState({ phase: "uploading", fileName: file.name });
+      setState({ phase: "uploading" });
       const supabase = createClient();
       try {
         const path = `${crypto.randomUUID()}.pdf`;
@@ -150,7 +154,8 @@ export function useTariffImport(initialBookId: string | null) {
         setState({ phase: "processing", book });
         setBookParam(book.id);
       } catch (error) {
-        setState({ phase: "failed", book: null, error: errorText(error) });
+        // Nothing was queued, so the picked file stays on the upload step to try again.
+        setState({ phase: "idle", error: errorText(error) });
       }
     },
     [setBookParam],

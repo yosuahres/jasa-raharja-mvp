@@ -70,7 +70,7 @@ function AuthForm({
     const result = await submit(data);
     setPending(false);
     if (result.ok) {
-      router.replace("/");
+      router.replace("/rekomendasi");
       router.refresh();
     } else if ("notice" in result) {
       setNotice(result.notice);

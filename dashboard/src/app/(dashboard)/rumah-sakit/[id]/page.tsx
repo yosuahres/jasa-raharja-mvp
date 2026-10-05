@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { DataCompleteness } from "@/components/hospital/data-completeness";
@@ -17,10 +18,20 @@ const first = (value: string | string[] | undefined) => (Array.isArray(value) ? 
 /** The best-scoring other hospital in the same city, else the best overall: the natural one to compare against. */
 const comparisonPeer = (hospital: Hospital, data: Dataset) => {
   const others = allSummaries(data)
-    .filter((s) => s.hospital.id !== hospital.id && s.tier !== null)
+    .filter((s) => s.hospital.id !== hospital.id && s.tipe !== null)
     .sort((a, b) => b.composite - a.composite);
   return (others.find((s) => s.hospital.city === hospital.city) ?? others[0])?.hospital;
 };
+
+export async function generateMetadata({ params }: PageProps<"/rumah-sakit/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  const hospital = (await getDataset()).hospitals.find((h) => h.id === id);
+  if (!hospital) return { title: "Rumah Sakit" };
+  return {
+    title: hospital.name,
+    description: `Profil, tarif, dan fasilitas ${hospital.name}${hospital.city ? `, ${hospital.city}` : ""}`,
+  };
+}
 
 export default async function HospitalPage({ params, searchParams }: PageProps<"/rumah-sakit/[id]">) {
   const [{ id }, search] = await Promise.all([params, searchParams]);
@@ -45,7 +56,7 @@ export default async function HospitalPage({ params, searchParams }: PageProps<"
   const incomplete = completeness.filter((c) => !c.complete).length;
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-8 sm:py-7">
+    <div className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-8">
       <ProviderHeader summary={summary} peer={comparisonPeer(hospital, data)} />
 
       <Tabs defaultValue="tarif" className="mt-6 gap-4">

@@ -31,7 +31,7 @@ export async function proxy(request: NextRequest) {
   const onAuthPage = AUTH_PAGES.some((path) => request.nextUrl.pathname.startsWith(path));
 
   if (!signedIn && !onAuthPage) return redirectKeepingCookies(request, "/sign-in", response);
-  if (signedIn && onAuthPage) return redirectKeepingCookies(request, "/", response);
+  if (signedIn && onAuthPage) return redirectKeepingCookies(request, "/rekomendasi", response);
   return response;
 }
 

@@ -1,4 +1,4 @@
-import type { Tier } from "@/lib/data/types";
+import type { Tier, Tipe } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
 
 export const TIER_LABEL: Record<Tier, string> = {
@@ -30,6 +30,23 @@ export function TierBadge({ tier, showLabel = false, className }: { tier: Tier; 
     >
       Tier {tier}
       {showLabel && <span className="font-medium opacity-80">· {TIER_LABEL[tier]}</span>}
+    </span>
+  );
+}
+
+const TIPE_STYLE: Record<Tipe, string> = { ...TIER_STYLE, D: "bg-muted text-muted-foreground ring-border" };
+
+/** A hospital's quarter in the overall ranking. */
+export function TipeBadge({ tipe, className }: { tipe: Tipe; className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold whitespace-nowrap ring-1 ring-inset",
+        TIPE_STYLE[tipe],
+        className,
+      )}
+    >
+      Tipe {tipe}
     </span>
   );
 }

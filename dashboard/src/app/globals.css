@@ -236,3 +236,29 @@
     font-size: 87.5%;
   }
 }
+/* The hospital map (Leaflet): the app's type and surfaces instead of Leaflet's own. */
+.leaflet-container {
+  @apply bg-muted font-sans;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  @apply bg-popover text-popover-foreground shadow-md;
+}
+.leaflet-popup-content {
+  @apply m-3 text-sm;
+}
+.leaflet-container a.leaflet-popup-close-button {
+  @apply text-muted-foreground;
+}
+.leaflet-container .leaflet-control-attribution {
+  @apply bg-background/80 text-muted-foreground;
+}
+.leaflet-container .leaflet-control-attribution a {
+  @apply text-muted-foreground;
+}
+/* OpenStreetMap only draws light tiles; dark mode turns them around and mutes them. */
+.leaflet-tile-pane {
+  @variant dark {
+    filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.85) saturate(0.4);
+  }
+}

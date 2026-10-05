@@ -1,37 +1,45 @@
 import { FileUp } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
 import { CompareCheckbox, CompareSelectionProvider } from "@/components/compare-selection";
+import { LinkRow } from "@/components/link-row";
 import { PageHero } from "@/components/page-hero";
 import { MethodNote, RatingPill } from "@/components/rating";
-import { TierBadge } from "@/components/tier-badge";
+import { TipeBadge } from "@/components/tier-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UrlSearchInput } from "@/components/url-search-input";
 import { UrlSelect } from "@/components/url-select";
 import { getDataset } from "@/lib/data/queries";
-import { formatDate, joinFacts, kelasLabel } from "@/lib/format";
+import { formatDate, joinFacts } from "@/lib/format";
 import type { HospitalSummary } from "@/lib/scoring";
 import { allSummaries } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
+export const metadata: Metadata = {
+  title: "Rumah Sakit",
+  description: "Daftar rumah sakit beserta tipe dan peringkatnya",
+};
+
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
 
-const TIER_OPTIONS = [
-  { value: "", label: "Semua tier" },
-  { value: "A", label: "Tier A · Preferred" },
-  { value: "B", label: "Tier B · Standard" },
-  { value: "C", label: "Tier C · Selective" },
+const TIPE_OPTIONS = [
+  { value: "", label: "Semua tipe" },
+  { value: "A", label: "Tipe A" },
+  { value: "B", label: "Tipe B" },
+  { value: "C", label: "Tipe C" },
+  { value: "D", label: "Tipe D" },
 ];
 
-const COLUMNS = 7;
+const COLUMNS = 6;
 
 export default async function HospitalsPage({ searchParams }: PageProps<"/rumah-sakit">) {
   const params = await searchParams;
   const city = first(params.kota) ?? "";
-  const tier = first(params.tier) ?? "";
+  const tipe = first(params.tipe) ?? "";
   const rawQuery = first(params.q) ?? "";
   const query = rawQuery.trim().toLowerCase();
 
@@ -39,11 +47,11 @@ export default async function HospitalsPage({ searchParams }: PageProps<"/rumah-
   const cities = [...new Set(summaries.map((s) => s.hospital.city))].sort();
   const rows = summaries
     .filter((s) => !city || s.hospital.city === city)
-    .filter((s) => !tier || s.tier === tier)
+    .filter((s) => !tipe || s.tipe === tipe)
     .filter((s) => !query || `${s.hospital.name} ${s.hospital.city}`.toLowerCase().includes(query))
     // In rank order; hospitals without a published document go last.
     .sort((a, b) => (a.placing?.rank ?? Infinity) - (b.placing?.rank ?? Infinity));
-  const filtered = Boolean(city || tier || query);
+  const filtered = Boolean(city || tipe || query);
 
   return (
     <>
@@ -74,13 +82,13 @@ export default async function HospitalsPage({ searchParams }: PageProps<"/rumah-
               options={[{ value: "", label: "Semua kota" }, ...cities.map((c) => ({ value: c, label: c }))]}
             />
           </Suspense>
-          <Suspense fallback={<FieldPlaceholder label="Tier" />}>
-            <UrlSelect param="tier" label="Tier" value={tier} options={TIER_OPTIONS} />
+          <Suspense fallback={<FieldPlaceholder label="Tipe" />}>
+            <UrlSelect param="tipe" label="Tipe" value={tipe} options={TIPE_OPTIONS} />
           </Suspense>
         </div>
       </PageHero>
 
-      <div className="mx-auto w-full max-w-7xl px-4 pt-4 pb-8 sm:px-8">
+      <div className="mx-auto w-full max-w-7xl px-4 pt-4 pb-7 sm:px-8">
         {filtered && (
           <div className="mb-2 flex justify-end text-xs">
             <Link href="/rumah-sakit" replace scroll={false} className="font-medium text-foreground underline-offset-4 hover:underline">
@@ -97,12 +105,11 @@ export default async function HospitalsPage({ searchParams }: PageProps<"/rumah-
                   <TableHead className="w-12 pl-4">
                     <span className="sr-only">Bandingkan</span>
                   </TableHead>
-                  <TableHead className="w-10">#</TableHead>
                   <TableHead>Rumah sakit</TableHead>
                   <TableHead className="hidden md:table-cell">Harga</TableHead>
                   <TableHead className="hidden md:table-cell">Layanan</TableHead>
                   <TableHead className="hidden lg:table-cell">Data tarif</TableHead>
-                  <TableHead className="pr-4">Tier</TableHead>
+                  <TableHead className="pr-4">Tipe</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -125,7 +132,7 @@ export default async function HospitalsPage({ searchParams }: PageProps<"/rumah-
                       ) : (
                         <>
                           <p className="font-medium">Tidak ada rumah sakit yang cocok</p>
-                          <p className="mt-1 text-muted-foreground">Coba kata kunci lain atau longgarkan filter kota dan tier.</p>
+                          <p className="mt-1 text-muted-foreground">Coba kata kunci lain atau longgarkan filter kota dan tipe.</p>
                         </>
                       )}
                     </TableCell>
@@ -145,21 +152,19 @@ function HospitalRow({ summary }: { summary: HospitalSummary }) {
   const { hospital } = summary;
 
   return (
-    // The name link stretches over the row; only the checkbox sits above it.
-    <TableRow className="relative has-checked:bg-muted/60 has-[a:focus-visible]:bg-muted/60">
+    <LinkRow href={`/rumah-sakit/${hospital.id}`} className="cursor-pointer hover:bg-muted has-checked:bg-muted has-[a:focus-visible]:bg-muted">
       <TableCell className="py-3 pl-4">
         <CompareCheckbox id={hospital.id} name={hospital.name} />
       </TableCell>
-      <TableCell className="py-3 font-semibold tabular-nums">{summary.placing?.rank ?? "—"}</TableCell>
       <TableCell className="min-w-48 py-3 whitespace-normal">
         <Link
           href={`/rumah-sakit/${hospital.id}`}
-          className="font-medium underline-offset-4 outline-none after:absolute after:inset-0 hover:underline focus-visible:underline"
+          className="font-medium underline-offset-4 outline-none hover:underline focus-visible:underline"
         >
           {hospital.name}
         </Link>
         <p className="text-xs text-muted-foreground">
-          {joinFacts(hospital.city, kelasLabel(hospital.kelas), hospital.ownership)}
+          {joinFacts(hospital.city, hospital.ownership)}
           {!hospital.partner && <span className="text-tier-c-ink"> · Belum mitra</span>}
         </p>
         <div className="mt-1.5 flex flex-wrap items-center gap-3 md:hidden">
@@ -184,8 +189,8 @@ function HospitalRow({ summary }: { summary: HospitalSummary }) {
           <p className="font-medium text-tier-c-ink">Belum ada data tarif</p>
         )}
       </TableCell>
-      <TableCell className="py-3 pr-4">{summary.tier ? <TierBadge tier={summary.tier} /> : <span className="text-muted-foreground">—</span>}</TableCell>
-    </TableRow>
+      <TableCell className="py-3 pr-4">{summary.tipe ? <TipeBadge tipe={summary.tipe} /> : <span className="text-muted-foreground">—</span>}</TableCell>
+    </LinkRow>
   );
 }
 

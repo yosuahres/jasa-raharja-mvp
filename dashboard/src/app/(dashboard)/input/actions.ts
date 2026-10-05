@@ -1,15 +1,20 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { revalidatePath, updateTag } from "next/cache";
+import { after } from "next/server";
 
 import { requireUser, saveError, slugify, text, uniqueId } from "@/lib/form";
+import { SHARED_DATA_TAG } from "@/lib/data/queries";
 import type { Detection, DetectedProfile } from "@/lib/data/types";
+import { geocodeHospital } from "@/lib/geocode";
 import { findHospital } from "@/lib/hospital-match";
 import { createClient } from "@/lib/supabase/server";
 import { TARIFF_BUCKET } from "@/lib/supabase/env";
 
 export type SaveState = { error: string | null };
+
+/** What saving a preview gives back: the hospital its tariffs went to, once saved. */
+export type SaveResult = SaveState & { hospitalId?: string };
 
 type ReviewBook = {
   id: string;
@@ -22,9 +27,9 @@ type ReviewBook = {
 /**
  * Saves a previewed upload: the hospital it is about (created, or updated when one with the same
  * name exists) with what the document says, then publishes the book as that hospital's tariffs.
- * Fields the document doesn't print come from the preview's pickers.
+ * Fields the document doesn't print keep the hospital's earlier values.
  */
-export async function saveImport(_previous: SaveState, data: FormData): Promise<SaveState> {
+export async function saveImport(_previous: SaveResult, data: FormData): Promise<SaveResult> {
   const supabase = await createClient();
   const denied = await requireUser(supabase);
   if (denied) return { error: denied };
@@ -51,7 +56,6 @@ export async function saveImport(_previous: SaveState, data: FormData): Promise<
     ...(profile.city ? { city: profile.city.value } : {}),
     ...(profile.province ? { province: profile.province.value } : {}),
     ...(profile.address ? { address: profile.address.value } : {}),
-    ...(profile.kelas ? { kelas: profile.kelas.value } : {}),
     ...(profile.ownership ? { ownership: profile.ownership.value } : {}),
     partner: Boolean(profile.partner?.value) || Boolean(existing?.partner),
   };
@@ -65,14 +69,14 @@ export async function saveImport(_previous: SaveState, data: FormData): Promise<
     if (error) return { error: saveError(error) };
   }
 
-  // Facilities and specialists the document shows tariffs for; ones already recorded keep their details.
+  // Facilities and specialists the document shows tariffs for. It doesn't print how many or their hours, so those stay empty.
   const [facilities, staff] = await Promise.all([
     supabase.from("hospital_facilities").upsert(
-      book.detected_facilities.map((d) => ({ hospital_id: hospitalId, facility_id: d.id, qty: 1, available_24h: true })),
+      book.detected_facilities.map((d) => ({ hospital_id: hospitalId, facility_id: d.id })),
       { onConflict: "hospital_id,facility_id", ignoreDuplicates: true },
     ),
     supabase.from("hospital_staff").upsert(
-      book.detected_specialties.map((d) => ({ hospital_id: hospitalId, specialty_id: d.id, headcount: 1, on_call_24h: true })),
+      book.detected_specialties.map((d) => ({ hospital_id: hospitalId, specialty_id: d.id })),
       { onConflict: "hospital_id,specialty_id", ignoreDuplicates: true },
     ),
   ]);
@@ -100,8 +104,13 @@ export async function saveImport(_previous: SaveState, data: FormData): Promise<
     .eq("id", book.id);
   if (publishError) return { error: saveError(publishError) };
 
+  // Its pin for the map is looked up once the save has answered, so saving doesn't wait on it.
+  const savedId = hospitalId;
+  after(() => geocodeHospital(supabase, savedId));
+
+  updateTag(SHARED_DATA_TAG);
   revalidatePath("/", "layout");
-  redirect(`/rumah-sakit/${hospitalId}`);
+  return { error: null, hospitalId };
 }
 
 /** Extracts another hospital out of a document that lists several. */

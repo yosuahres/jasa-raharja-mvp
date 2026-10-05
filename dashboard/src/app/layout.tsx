@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Script from "next/script";
 
 import "./globals.css";
 
@@ -15,10 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: {
-    default: "Hospital Tiering | Databiota",
-    template: "%s | Databiota",
-  },
+  title: "Hospital Tiering",
   description: "Rujukan rumah sakit yang tepat untuk korban kecelakaan",
 };
 
@@ -28,12 +24,11 @@ const THEME_BOOTSTRAP = `try{var d=document.documentElement.dataset,t=localStora
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="id" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
-      <body className="min-h-full">
-        {children}
-        <Script id="theme-bootstrap" strategy="beforeInteractive">
-          {THEME_BOOTSTRAP}
-        </Script>
-      </body>
+      <head>
+        {/* A plain inline script runs synchronously before first paint; next/script's beforeInteractive waits for the runtime. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+      </head>
+      <body className="min-h-full">{children}</body>
     </html>
   );
 }

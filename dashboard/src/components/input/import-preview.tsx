@@ -1,23 +1,28 @@
 "use client";
 
-import { ChevronDown, CircleAlert, FileText, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useActionState, useState, useTransition } from "react";
 
-import { discardImport, type SaveState, saveImport, switchHospital } from "@/app/(dashboard)/input/actions";
+import { discardImport, type SaveResult, type SaveState, saveImport, switchHospital } from "@/app/(dashboard)/input/actions";
 import { useCatalog } from "@/components/catalog-provider";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CATEGORIES } from "@/lib/categories";
 import type { DetectedField } from "@/lib/data/types";
 import { findHospital } from "@/lib/hospital-match";
 import { cn } from "@/lib/utils";
 
 import { CategoryRows } from "./category-rows";
+import { Notice, StepHeader } from "./step-layout";
 import type { ImportPreview as Preview } from "./use-tariff-import";
 
-const EMPTY: SaveState = { error: null };
+const EMPTY: SaveResult = { error: null };
+
+const count = (n: number) => n.toLocaleString("id-ID");
 
 /**
- * What the extractor read, field by field with where it read it, and every tariff row by
+ * Step 3: what the extractor read, field by field with where it read it, and every tariff row by
  * category. Nothing is typed; saving creates or updates the hospital.
  */
 export function ImportPreview({
@@ -33,12 +38,16 @@ export function ImportPreview({
   onDiscarded: () => void;
 }) {
   const { book, totalRows, flaggedRows } = preview;
+  const router = useRouter();
   const catalog = useCatalog();
   const profile = book.profile;
   const [state, save, saving] = useActionState(saveImport, EMPTY);
   const [busy, startTransition] = useTransition();
   const [actionError, setActionError] = useState<string | null>(null);
   const existing = findHospital(hospitals, profile.name?.value);
+  // Saved now, or earlier when an already-saved upload is reopened.
+  const savedTo = state.hospitalId ?? (book.status === "published" ? book.hospitalId : null);
+  const error = state.error ?? actionError;
 
   const run = (action: () => Promise<SaveState>, then: () => void) =>
     startTransition(async () => {
@@ -49,103 +58,125 @@ export function ImportPreview({
 
   const facilityName = (id: string) => catalog.facilities.find((f) => f.id === id)?.name ?? id;
   const specialtyName = (id: string) => catalog.specialties.find((s) => s.id === id)?.name ?? id;
+  const hospitalName = existing?.name ?? profile.name?.value ?? "rumah sakit ini";
 
   return (
-    <form action={save} className="grid gap-8">
+    <form action={save}>
       <input type="hidden" name="book_id" value={book.id} />
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-        <span className="flex min-w-0 items-center gap-2">
-          <FileText className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate font-medium">{book.fileName}</span>
-        </span>
-        <span className="text-muted-foreground tabular-nums">
-          {totalRows.toLocaleString("id-ID")} baris tarif dibaca
-          {flaggedRows > 0 && ` · ${flaggedRows.toLocaleString("id-ID")} kurang jelas`}
-          {book.scannedPages.length > 0 && ` · ${book.scannedPages.length} halaman scan dilewati`}
-        </span>
+      <StepHeader
+        title="Periksa & simpan"
+        status={savedTo ? { label: "Tersimpan", tone: "success" } : undefined}
+        description={
+          savedTo
+            ? `${count(totalRows)} baris tarif tersimpan untuk ${hospitalName}.`
+            : `${count(totalRows)} baris tarif dibaca dari ${book.fileName}.`
+        }
+        actions={
+          savedTo ? (
+            <Button type="button" size="sm" onClick={() => router.push(`/rumah-sakit/${savedTo}`)}>
+              Selesai
+            </Button>
+          ) : (
+            <>
+              <Button type="button" variant="ghost" size="sm" disabled={busy || saving} onClick={() => run(() => discardImport(book.id), onDiscarded)}>
+                Batal
+              </Button>
+              <Button type="submit" size="sm" disabled={busy || saving}>
+                {saving && <Loader2 className="animate-spin motion-reduce:animate-none" />}
+                {saving ? "Menyimpan…" : "Simpan"}
+              </Button>
+            </>
+          )
+        }
+      />
+
+      {!savedTo && book.documentHospitals.length > 1 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+          <span className="shrink-0 text-sm font-medium">Rumah sakit</span>
+          <Picker
+            defaultValue={book.facilityFilter ?? ""}
+            disabled={busy || saving}
+            onChange={(heading) => run(() => switchHospital(book.id, heading), onReprocess)}
+            options={book.documentHospitals.map((h) => ({ value: h.heading, label: h.name }))}
+          />
+          <span className="text-xs text-muted-foreground">Dokumen memuat {book.documentHospitals.length} rumah sakit.</span>
+        </div>
+      )}
+
+      <div className="grid gap-3">
+        {error && <Notice tone="error">{error}</Notice>}
+        {savedTo ? (
+          <Notice tone="success">Tarif dari dokumen ini sekarang menjadi tarif terbaru {hospitalName}.</Notice>
+        ) : existing ? (
+          <Notice tone="info">
+            Sudah terdaftar sebagai <span className="font-medium text-foreground">{existing.name}</span>. Tarif dari dokumen ini menjadi tarif terbarunya.
+          </Notice>
+        ) : (
+          <Notice tone="success">Rumah sakit baru.</Notice>
+        )}
+        {flaggedRows > 0 && <Notice tone="warning">{count(flaggedRows)} baris kurang jelas terbaca.</Notice>}
+        {book.scannedPages.length > 0 && <Notice tone="warning">{count(book.scannedPages.length)} halaman scan dilewati.</Notice>}
       </div>
 
-      <Section title="Rumah sakit" note={existing ? `Sudah terdaftar sebagai ${existing.name}. Tarif dari dokumen ini menjadi tarif terbarunya.` : "Rumah sakit baru."}>
+      <Section title="Rumah sakit">
         <Fields>
-        {book.documentHospitals.length > 1 && (
-          <Row label="Dokumen memuat" source={`${book.documentHospitals.length} rumah sakit. Pilih yang ingin diambil.`}>
-            <Picker
-              defaultValue={book.facilityFilter ?? ""}
-              disabled={busy}
-              onChange={(heading) => run(() => switchHospital(book.id, heading), onReprocess)}
-              options={book.documentHospitals.map((h) => ({ value: h.heading, label: h.name }))}
-            />
+          <Field label="Nama" field={profile.name} />
+          <Field label="Kota" field={profile.city} />
+          <Field label="Provinsi" field={profile.province} />
+          <Field label="Tahun tarif" field={profile.year} format={String} />
+          <Field label="Kepemilikan" field={profile.ownership} />
+          <Field label="Alamat" field={profile.address} />
+          <Field label="Mitra PKS" field={profile.partner} format={(p) => (p ? "Ya" : "Tidak")} />
+        </Fields>
+      </Section>
+
+      <Section title="Fasilitas & tenaga medis">
+        <Fields>
+          <Row label="Fasilitas" source={book.detectedFacilities.length ? null : "Tidak ada yang terdeteksi"}>
+            <Chips items={book.detectedFacilities.map((d) => ({ id: d.id, label: facilityName(d.id), page: d.page }))} />
           </Row>
-        )}
-        <Field label="Nama" field={profile.name} />
-        <Field label="Kota" field={profile.city} />
-        <Field label="Provinsi" field={profile.province} />
-        <Field label="Tahun tarif" field={profile.year} format={String} />
-        <Field label="Tipe RS" field={profile.kelas} format={(k) => `Tipe ${k}`} />
-        <Field label="Kepemilikan" field={profile.ownership} />
-        <Field label="Alamat" field={profile.address} />
-        <Field label="Mitra PKS" field={profile.partner} format={(p) => (p ? "Ya" : "Tidak")} />
+          <Row label="Tenaga medis" source={book.detectedSpecialties.length ? null : "Tidak ada yang terdeteksi"}>
+            <Chips items={book.detectedSpecialties.map((d) => ({ id: d.id, label: specialtyName(d.id), page: d.page }))} />
+          </Row>
         </Fields>
       </Section>
 
-      <Section title="Fasilitas & tenaga medis" note="Terdeteksi dari layanan yang ada tarifnya di dokumen.">
-        <Fields>
-        <Row label="Fasilitas" source={book.detectedFacilities.length ? null : "Tidak ada yang terdeteksi"}>
-          <Chips items={book.detectedFacilities.map((d) => ({ id: d.id, label: facilityName(d.id), page: d.page }))} />
-        </Row>
-        <Row label="Tenaga medis" source={book.detectedSpecialties.length ? null : "Tidak ada yang terdeteksi"}>
-          <Chips items={book.detectedSpecialties.map((d) => ({ id: d.id, label: specialtyName(d.id), page: d.page }))} />
-        </Row>
-        </Fields>
-      </Section>
-
-      <Section title="Baris tarif" note="Semua baris di dokumen, dikelompokkan menurut jenis layanan.">
-        <div className="divide-y overflow-hidden rounded-xl border">
+      <Section title="Baris tarif">
+        <div className="divide-y overflow-hidden rounded-lg border bg-background">
           {CATEGORIES.filter((c) => (book.categoryCounts[c.id] ?? 0) > 0).map((c) => (
             <CategoryRows key={c.id} bookId={book.id} category={c.id} label={c.label} count={book.categoryCounts[c.id] ?? 0} />
           ))}
         </div>
       </Section>
-
-      <div className="sticky bottom-0 -mx-4 flex flex-col-reverse gap-3 border-t bg-background/95 px-4 py-4 backdrop-blur sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <Button type="button" variant="ghost" size="lg" disabled={busy || saving} onClick={() => run(() => discardImport(book.id), onDiscarded)}>
-          Batal, hapus unggahan
-        </Button>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          {(state.error ?? actionError) && (
-            <p role="alert" className="flex items-center gap-1.5 text-sm text-tier-c-ink">
-              <CircleAlert className="size-4 shrink-0" />
-              {state.error ?? actionError}
-            </p>
-          )}
-          <Button type="submit" size="lg" disabled={busy || saving}>
-            {saving && <Loader2 className="animate-spin motion-reduce:animate-none" />}
-            Simpan
-          </Button>
-        </div>
-      </div>
     </form>
   );
 }
 
-function Fields({ children }: { children: React.ReactNode }) {
-  return <dl className="grid gap-px overflow-hidden rounded-xl border bg-border">{children}</dl>;
-}
-
-function Section({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="grid gap-3">
-      <div>
-        <h3 className="text-base font-semibold tracking-tight">{title}</h3>
-        <p className="text-sm text-muted-foreground text-pretty">{note}</p>
-      </div>
+    <section className="mt-8">
+      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
       {children}
     </section>
   );
 }
 
-/** One field: the value read from the document and its source, or a pick when it isn't printed. */
+const ROW_GRID = "sm:grid-cols-[9rem_minmax(0,1fr)_minmax(0,14rem)] sm:items-center sm:gap-3";
+
+function Fields({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-lg border bg-background">
+      <div className={cn("hidden border-b bg-muted/50 px-4 py-3 text-xs font-medium text-muted-foreground sm:grid", ROW_GRID)}>
+        <span>Data</span>
+        <span>Hasil baca</span>
+        <span className="text-right">Sumber</span>
+      </div>
+      <dl>{children}</dl>
+    </div>
+  );
+}
+
 /** One field: the value read from the document and where, or a note that the document doesn't print it. */
 function Field<T>({ label, field, format }: { label: string; field: DetectedField<T> | undefined; format?: (value: T) => string }) {
   if (field) {
@@ -164,10 +195,10 @@ function Field<T>({ label, field, format }: { label: string; field: DetectedFiel
 
 function Row({ label, source, missing, children }: { label: string; source: string | null; missing?: boolean; children: React.ReactNode }) {
   return (
-    <div className={cn("grid gap-1 bg-card px-4 py-3 text-sm sm:grid-cols-[10rem_minmax(0,1fr)_minmax(0,16rem)] sm:items-center sm:gap-4", missing && "bg-tier-b-soft/40")}>
+    <div className={cn("grid gap-1 border-b px-4 py-3 text-sm last:border-b-0", ROW_GRID)}>
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0">{children}</dd>
-      {source && <dd className={cn("text-xs text-muted-foreground sm:text-right", missing && "text-tier-b-ink")}>{source}</dd>}
+      {source && <dd className={cn("text-xs text-muted-foreground sm:text-right", missing && "text-amber-700 dark:text-amber-400")}>{source}</dd>}
     </div>
   );
 }
@@ -184,18 +215,18 @@ function Picker({
   onChange: (value: string) => void;
 }) {
   return (
-    <span className="relative block max-w-xs">
-      <select defaultValue={defaultValue} disabled={disabled} onChange={(e) => onChange(e.target.value)}
-        className="h-9 w-full appearance-none truncate rounded-lg bg-background py-1 pr-9 pl-3 text-sm shadow-[0_0_0_1px_var(--border)] outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
-      >
+    <Select items={options} defaultValue={defaultValue} disabled={disabled} onValueChange={(next) => next !== null && onChange(next)}>
+      <SelectTrigger aria-label="Rumah sakit" className="w-64 max-w-full cursor-pointer bg-background dark:bg-background">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
         {options.map((o) => (
-          <option key={o.value} value={o.value}>
+          <SelectItem key={o.value} value={o.value}>
             {o.label}
-          </option>
+          </SelectItem>
         ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground" />
-    </span>
+      </SelectContent>
+    </Select>
   );
 }
 

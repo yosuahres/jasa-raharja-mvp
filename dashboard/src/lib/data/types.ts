@@ -2,6 +2,9 @@ import type { CategoryId } from "@/lib/categories";
 
 export type Tier = "A" | "B" | "C";
 
+/** A hospital's place in the overall ranking (price and what its document shows it offers), by quarters. */
+export type Tipe = "A" | "B" | "C" | "D";
+
 export type Facility = {
   id: string;
   name: string;
@@ -48,16 +51,30 @@ export type TariffLine = {
   priceMax: number | null;
 };
 
+/**
+ * A tindakan the hospitals' documents price, matched across them however each prints it
+ * ("Pasang Catheter", "PEMASANGAN KATETER"). `key` identifies it; `name` is its plainest printed name.
+ */
+export type Treatment = { key: string; name: string; hospitals: number };
+
+/** A tindakan with the lowest and highest price the current documents give it; null when none is a plain number. */
+export type PricedTreatment = Treatment & { priceMin: number | null; priceMax: number | null };
+
+/** A row that prices a tindakan, with the document it is in, the tindakan's key and its name as that row prints it. */
+export type TreatmentLine = TariffLine & { bookId: string; key: string; treatmentName: string };
+
+/** A facility its document shows tariffs for. How many and whether round the clock: null, documents don't print them. */
 export type HospitalFacility = {
   facilityId: string;
-  qty: number;
-  available24h: boolean;
+  qty: number | null;
+  available24h: boolean | null;
 };
 
+/** A specialist its document shows tariffs for. How many and whether on call: null, documents don't print them. */
 export type HospitalStaff = {
   specialtyId: string;
-  headcount: number;
-  onCall24h: boolean;
+  headcount: number | null;
+  onCall24h: boolean | null;
 };
 
 export type BookStatus = "queued" | "extracting" | "review" | "published" | "failed";
@@ -90,7 +107,6 @@ export type DetectedProfile = {
   province?: DetectedField<string>;
   year?: DetectedField<number>;
   address?: DetectedField<string>;
-  kelas?: DetectedField<NonNullable<Hospital["kelas"]>>;
   ownership?: DetectedField<NonNullable<Hospital["ownership"]>>;
   partner?: DetectedField<boolean>;
 };
@@ -102,7 +118,6 @@ export type Hospital = {
   id: string;
   name: string;
   /** Null when its document doesn't print it. */
-  kelas: "A" | "B" | "C" | "D" | null;
   ownership: "Pemerintah" | "Swasta" | "BUMN" | "TNI/Polri" | null;
   /** As the document prints them; empty when it doesn't. */
   city: string;
@@ -110,6 +125,8 @@ export type Hospital = {
   address: string;
   partner: boolean;
   beds: number;
+  /** Where its name and address put it on the map; null until the lookup finds it. */
+  location: { lat: number; lng: number } | null;
   facilities: HospitalFacility[];
   staff: HospitalStaff[];
   /**

@@ -1,21 +1,39 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
 import type { CategoryId } from "@/lib/categories";
 import { createClient } from "@/lib/supabase/server";
 
 import { LINE_SELECT, type LineRow, searchWords, toLine } from "./rows";
-import type { Catalog, CategoryCounts, Dataset, Hospital, TariffBook, TariffLine } from "./types";
+import type { Catalog, CategoryCounts, Dataset, Hospital, PricedTreatment, TariffBook, TariffLine, Treatment, TreatmentLine } from "./types";
 
 const must = <T>(result: { data: T | null; error: { message: string } | null }, what: string): T => {
   if (result.error) throw new Error(`Could not load ${what}: ${result.error.message}`);
   return result.data as T;
 };
 
-/** The facilities and specialists the system recognises. Once per request. */
-export const getCatalog = cache(async (): Promise<Catalog> => {
-  const supabase = await createClient();
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+
+/** Tag on the reads every signed-in user shares; saving a document refreshes them. */
+export const SHARED_DATA_TAG = "shared-data";
+
+/**
+ * A read cached across requests and users: every signed-in staff member may read everything
+ * (supabase/schema.sql, access rules), and the price index behind the hospitals is costly to work out.
+ * Saving a document refreshes it at once; anything else (map pins, SQL run by hand) within a minute,
+ * served stale meanwhile so no page waits on it.
+ */
+const shared = <T>(name: string, load: (supabase: Supabase) => Promise<T>) =>
+  cache(async (): Promise<T> => {
+    // The client is made outside the cached function: cookies can't be read inside one.
+    const supabase = await createClient();
+    return unstable_cache(() => load(supabase), [name], { tags: [SHARED_DATA_TAG], revalidate: 60 })();
+  });
+
+/** The facilities and specialists the system recognises. */
+export const getCatalog = shared("catalog", async (supabase): Promise<Catalog> => {
   const [facilities, specialties] = await Promise.all([
     supabase.from("facilities").select("id, name, category, keywords").order("name"),
     supabase.from("specialties").select("id, name, keywords").order("name"),
@@ -23,12 +41,14 @@ export const getCatalog = cache(async (): Promise<Catalog> => {
   return { facilities: must(facilities, "facilities"), specialties: must(specialties, "specialties") };
 });
 
-type HospitalRow = Omit<Hospital, "facilities" | "staff" | "priceIndex" | "tariffBook" | "previousBook"> & {
-  hospital_facilities: { facility_id: string; qty: number; available_24h: boolean }[];
-  hospital_staff: { specialty_id: string; headcount: number; on_call_24h: boolean }[];
+type HospitalRow = Omit<Hospital, "location" | "facilities" | "staff" | "priceIndex" | "tariffBook" | "previousBook"> & {
+  hospital_facilities: { facility_id: string; qty: number | null; available_24h: boolean | null }[];
+  hospital_staff: { specialty_id: string; headcount: number | null; on_call_24h: boolean | null }[];
 };
 
 type PriceIndexRow = { hospital_id: string; price_index: number; compared_rows: number };
+
+type LocationRow = { id: string; lat: number | null; lng: number | null };
 
 type BookRow = {
   id: string;
@@ -53,13 +73,12 @@ const toBook = (row: BookRow | undefined): TariffBook | null =>
       }
     : null;
 
-/** Every hospital with its current and previous published document. Once per request. */
-export const getHospitals = cache(async (): Promise<Hospital[]> => {
-  const supabase = await createClient();
-  const [hospitalsResult, booksResult, priceResult] = await Promise.all([
+/** Every hospital with its current and previous published document. */
+export const getHospitals = shared("hospitals", async (supabase): Promise<Hospital[]> => {
+  const [hospitalsResult, booksResult, priceResult, locationResult] = await Promise.all([
     supabase
       .from("hospitals")
-      .select("id, name, kelas, ownership, city, province, address, partner, beds, hospital_facilities(*), hospital_staff(*)")
+      .select("id, name, ownership, city, province, address, partner, beds, hospital_facilities(*), hospital_staff(*)")
       .order("name"),
     supabase
       .from("tariff_books")
@@ -67,18 +86,23 @@ export const getHospitals = cache(async (): Promise<Hospital[]> => {
       .eq("status", "published")
       .order("published_at", { ascending: false }),
     supabase.from("hospital_price_index").select("hospital_id, price_index, compared_rows").returns<PriceIndexRow[]>(),
+    supabase.from("hospitals").select("id, lat, lng").not("lat", "is", null).returns<LocationRow[]>(),
   ]);
   const hospitals = must<HospitalRow[]>(hospitalsResult, "hospitals");
   const books = must<BookRow[]>(booksResult, "tariff books");
   // The price index is a view (migrations/005); until it exists, hospitals just have no price rating.
   const prices = priceResult.error ? [] : (priceResult.data ?? []);
+  // Likewise the coordinates (migrations/008): until they exist, no hospital has a pin.
+  const locations = locationResult.error ? [] : (locationResult.data ?? []);
 
   return hospitals.map(({ hospital_facilities, hospital_staff, ...h }) => {
     // Newest first, so a hospital's first two are its current and previous ones.
     const [current, previous] = books.filter((b) => b.hospital_id === h.id);
     const price = prices.find((p) => p.hospital_id === h.id);
+    const location = locations.find((l) => l.id === h.id);
     return {
       ...h,
+      location: location?.lat != null && location.lng != null ? { lat: location.lat, lng: location.lng } : null,
       facilities: hospital_facilities.map((f) => ({ facilityId: f.facility_id, qty: f.qty, available24h: f.available_24h })),
       staff: hospital_staff.map((s) => ({ specialtyId: s.specialty_id, headcount: s.headcount, onCall24h: s.on_call_24h })),
       priceIndex: price ? { ratio: Number(price.price_index), compared: price.compared_rows } : null,
@@ -119,26 +143,90 @@ export async function searchLines(query: string, bookIds: string[]): Promise<(Ta
   return rows.map((row) => ({ ...toLine(row), bookId: row.book_id }));
 }
 
-/** Names of rows that have any word of the search, for suggesting one when none has every word. */
-export async function searchNamesAny(query: string, bookIds: string[]): Promise<{ rawName: string; bookId: string }[]> {
-  const words = searchWords(query);
-  if (words.length === 0 || bookIds.length === 0) return [];
-  const supabase = await createClient();
-  // searchWords() leaves only [a-z0-9], so the words are safe inside the filter string.
-  const rows = must(
-    await supabase
-      .from("tariff_rows")
-      .select("book_id, raw_name")
-      .in("book_id", bookIds)
-      .or(words.map((w) => `raw_name.ilike.%${w}%`).join(","))
-      .limit(1000)
-      .returns<{ book_id: string; raw_name: string }[]>(),
-    "tariff rows",
-  );
-  return rows.map((row) => ({ rawName: row.raw_name, bookId: row.book_id }));
+type TreatmentListRow = { key: string; names: string[]; hospitals: number };
+
+const wordCount = (text: string) => text.split(/\s+/).length;
+const isShouting = (text: string) => text === text.toUpperCase();
+
+/** The plainest way the documents print a tindakan: no size or class after it, fewest words, not in capitals. */
+const plainestName = (names: string[]) => {
+  const whole = names.filter((n) => !n.includes(" — "));
+  return [...(whole.length ? whole : names)].sort(
+    (a, b) => wordCount(a) - wordCount(b) || Number(isShouting(a)) - Number(isShouting(b)) || a.length - b.length,
+  )[0];
+};
+
+const toTreatment = (row: TreatmentListRow): Treatment => ({ key: row.key, name: plainestName(row.names), hospitals: row.hospitals });
+
+/** Tindakan in the current documents whose names have every word of the search, those more hospitals price first. */
+export async function findTreatments(query: string, limit = 30): Promise<Treatment[]> {
+  return queryTreatments(await createClient(), query, limit);
 }
 
-export type BookRowStats ={ total: number; needsCheck: number };
+/** The tindakan most hospitals price, offered before anything is typed. */
+export const getTopTreatments = shared("top-treatments", (supabase) => queryTreatments(supabase, "", 30));
+
+async function queryTreatments(supabase: Supabase, query: string, limit: number): Promise<Treatment[]> {
+  let request = supabase.from("treatment_list").select("key, names, hospitals");
+  for (const word of searchWords(query)) request = request.ilike("search", `%${word}%`);
+  const result = await request.order("hospitals", { ascending: false }).order("key").limit(limit).returns<TreatmentListRow[]>();
+  return must(result, "tindakan").map(toTreatment);
+}
+
+export async function getTreatment(key: string): Promise<Treatment | null> {
+  const supabase = await createClient();
+  const result = await supabase.from("treatment_list").select("key, names, hospitals").eq("key", key).maybeSingle<TreatmentListRow>();
+  const row = must(result, "tindakan");
+  return row ? toTreatment(row) : null;
+}
+
+/** These tindakan with the lowest and highest price these documents give them; those no document prices are left out. */
+export async function getTreatmentsWithPrices(keys: string[], bookIds: string[]): Promise<PricedTreatment[]> {
+  if (keys.length === 0 || bookIds.length === 0) return [];
+  const supabase = await createClient();
+  const [list, priced] = await Promise.all([
+    supabase.from("treatment_list").select("key, names, hospitals").in("key", keys).returns<TreatmentListRow[]>(),
+    supabase
+      .from("tariff_treatments")
+      .select("key, tariff_rows(tariff_prices(amount, superseded))")
+      .in("key", keys)
+      .in("book_id", bookIds)
+      .limit(5000)
+      .returns<{ key: string; tariff_rows: { tariff_prices: { amount: number | null; superseded: boolean }[] } }[]>(),
+  ]);
+  const amounts = new Map<string, number[]>();
+  for (const row of must(priced, "tindakan prices")) {
+    const current = row.tariff_rows.tariff_prices.filter((p) => !p.superseded && p.amount !== null).map((p) => Number(p.amount));
+    amounts.set(row.key, [...(amounts.get(row.key) ?? []), ...current]);
+  }
+  return must(list, "tindakan").map((row) => {
+    const prices = amounts.get(row.key) ?? [];
+    return {
+      ...toTreatment(row),
+      priceMin: prices.length ? Math.min(...prices) : null,
+      priceMax: prices.length ? Math.max(...prices) : null,
+    };
+  });
+}
+
+/** Every row of these documents that prices one of the tindakan. */
+export async function getTreatmentLines(keys: string[], bookIds: string[]): Promise<TreatmentLine[]> {
+  if (keys.length === 0 || bookIds.length === 0) return [];
+  const supabase = await createClient();
+  const rows = must(
+    await supabase
+      .from("tariff_treatments")
+      .select(`key, name, book_id, tariff_rows(${LINE_SELECT})`)
+      .in("key", keys)
+      .in("book_id", bookIds)
+      .limit(1000)
+      .returns<{ key: string; name: string; book_id: string; tariff_rows: LineRow }[]>(),
+    "tindakan rows",
+  );
+  return rows.map((row) => ({ ...toLine(row.tariff_rows), bookId: row.book_id, key: row.key, treatmentName: row.name }));
+}
+
+export type BookRowStats = { total: number; needsCheck: number };
 
 export const getBookRowStats = cache(async (bookId: string): Promise<BookRowStats> => {
   const supabase = await createClient();

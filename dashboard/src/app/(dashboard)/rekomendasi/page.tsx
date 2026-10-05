@@ -1,21 +1,25 @@
-import { SearchX } from "lucide-react";
+import { ChevronLeft, GitCompareArrows, SearchX } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { PriceRangeChart } from "@/components/charts/price-range-chart";
-import { RatingPill } from "@/components/rating";
-import { FilterBar, ResetFiltersButton } from "@/components/search/filter-bar";
-import { applyFilters, countActiveFilters, parseFilters, parseSort, type SortKey, TIERS } from "@/components/search/filters";
-import { ResultsExplorer } from "@/components/search/results-explorer";
-import { medianDelta, toSearchResult } from "@/components/search/results";
-import { TreatmentSearch } from "@/components/search/treatment-search";
-import { TierBadge } from "@/components/tier-badge";
-import { TreatmentSuggestions } from "@/components/search/treatment-suggestions";
-import { getDataset, searchLines, searchNamesAny } from "@/lib/data/queries";
-import type { Tier } from "@/lib/data/types";
-import { formatJuta, formatRange, joinFacts } from "@/lib/format";
-import { fairPriceLevel, LOCALITY_LABEL, LOCALITY_RANK, originsOf, rankForTreatment, type TreatmentMatch } from "@/lib/scoring";
-import { treatmentVariants } from "@/lib/treatment-variants";
+import { AccidentSearch } from "@/components/search/accident-search";
+import { CaseResultCard } from "@/components/search/case-result-card";
+import { FilterButton, ResetFiltersButton, SortButton } from "@/components/search/filter-bar";
+import { applyFilters, countActiveFilters, factsOf, parseFilters, parseSort, type SortKey } from "@/components/search/filters";
+import { ResultCard } from "@/components/search/result-card";
+import { toSearchResult } from "@/components/search/results";
+import { buttonVariants } from "@/components/ui/button";
+import { type AccidentCase, accidentCaseKeys, findAccidentCase } from "@/lib/accident-cases";
+import { getDataset, getTreatment, getTreatmentLines } from "@/lib/data/queries";
+import { LOCALITY_RANK, type Origin, originsOf, rankForCase, rankForTreatment, type TreatmentMatch } from "@/lib/scoring";
+
+export const metadata: Metadata = {
+  title: "Cari Rujukan",
+  description: "Cari tindakan dan rumah sakit rujukan untuk korban kecelakaan berdasarkan kasus dan lokasi",
+};
+
+const MAX_COMPARE = 3;
 
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
 
@@ -28,195 +32,165 @@ const SORT_COMPARE: Record<SortKey, (a: TreatmentMatch, b: TreatmentMatch) => nu
 
 export default async function RecommendationPage({ searchParams }: PageProps<"/rekomendasi">) {
   const params = await searchParams;
-  const data = await getDataset();
-  const query = (first(params.q) ?? "").trim();
+  const key = first(params.tindakan);
+  const accidentCase = findAccidentCase(first(params.kasus));
+  const [data, treatment] = await Promise.all([getDataset(), key ? getTreatment(key) : null]);
   const origins = originsOf(data.hospitals);
   const origin = origins.find((o) => o.city === first(params.lokasi)) ?? origins[0];
 
-  const hrefFor = (name: string) => {
-    const next = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      const v = first(value);
-      if (v !== undefined) next.set(key, v);
-    }
-    next.set("q", name);
-    return `/rekomendasi?${next}`;
-  };
-
-  const renderHeader = (suggestions?: React.ReactNode) => (
-    <section className="border-b px-4 py-7 sm:px-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-balance">Cari Rujukan</h1>
-      <div className="mt-5">
-        <TreatmentSearch query={query} location={origin?.city ?? ""} cities={origins.map((o) => o.city)} />
-      </div>
-      {suggestions}
-    </section>
+  const search = (compact: boolean) => (
+    <AccidentSearch accidentCase={accidentCase} location={origin?.city ?? ""} cities={origins.map((o) => o.city)} compact={compact} />
   );
-  const header = renderHeader();
 
   if (!origin) {
     return (
-      <>
-        {header}
-        <div className="px-4 py-7 sm:px-8">
-          <EmptyState title="Belum ada data" />
-        </div>
-      </>
+      <Results search={search(true)}>
+        <EmptyState title="Belum ada data" />
+      </Results>
     );
   }
-  if (!query) return header;
 
   const bookIds = data.hospitals.flatMap((h) => (h.tariffBook ? [h.tariffBook.id] : []));
-  const lines = await searchLines(query, bookIds);
-  const ranked = rankForTreatment(lines, origin, data);
-  if (ranked.length === 0) {
-    // Nothing has every word: offer the names that have some of them.
-    const nearby = treatmentVariants(await searchNamesAny(query, bookIds), query);
+
+  // An accident case: the hospitals for the whole case, each with the tindakan it prices.
+  if (!treatment && accidentCase) {
     return (
-      <>
-        {renderHeader(
-          nearby.length > 0 && <TreatmentSuggestions label="Mungkin maksud Anda" variants={nearby} query={query} hrefFor={hrefFor} />,
-        )}
-        <div className="px-4 py-7 sm:px-8">
-          <EmptyState title={`Tidak ada tarif untuk "${query}"`} />
-        </div>
-      </>
+      <Results search={search(true)}>
+        <CaseRecommendation accidentCase={accidentCase} origin={origin} bookIds={bookIds} />
+      </Results>
     );
   }
 
-  // Different treatments can share the search's words; picking one compares like with like.
-  const variants = treatmentVariants(lines, query);
+  // Nothing searched yet: the search sits alone in the middle of the page.
+  if (!treatment) {
+    return (
+      <div className="flex min-h-[calc(100dvh-3rem)] flex-col items-center justify-center px-4 pt-10 pb-[12vh] sm:px-8 lg:min-h-[calc(100dvh-4rem)]">
+        <div className="w-full max-w-4xl">
+          <h1 className="text-center text-3xl font-semibold tracking-tight text-balance">Cari Rujukan</h1>
+          <div className="mt-7">{search(false)}</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Reached from an accident case: a way back to its other tindakan.
+  const back = accidentCase
+    ? { href: `/rekomendasi?${new URLSearchParams({ kasus: accidentCase.id, lokasi: origin.city })}`, label: accidentCase.name }
+    : undefined;
+  const ranked = rankForTreatment(await getTreatmentLines([treatment.key], bookIds), origin, data);
+  if (ranked.length === 0) {
+    return (
+      <Results search={search(true)} back={back}>
+        <EmptyState title={`Tidak ada tarif untuk "${treatment.name}"`} />
+      </Results>
+    );
+  }
 
   const sort = parseSort(first(params.urut));
   const filters = parseFilters((key) => first(params[key]));
   const listed = [...applyFilters(ranked, filters)].sort(SORT_COMPARE[sort]);
-  const results = listed.map((m) => toSearchResult(m, { rank: ranked.indexOf(m) + 1, recommended: m === ranked[0] }));
-  const tierCounts = Object.fromEntries(TIERS.map((t) => [t, ranked.filter((m) => m.tier === t).length])) as Record<Tier, number>;
-  const median = ranked[0].medianPrice;
+  const results = listed.map(toSearchResult);
+  const compareIds = ranked.slice(0, MAX_COMPARE).map((m) => m.summary.hospital.id);
 
   return (
-    <>
-      {renderHeader(
-        variants.length > 1 && <TreatmentSuggestions label="Tindakan yang cocok" variants={variants} query={query} hrefFor={hrefFor} />,
-      )}
-      <Answer match={ranked[0]} query={query} />
-      <Summary ranked={ranked} median={median} tierA={tierCounts.A} />
-
-      <ResultsExplorer
-        results={results}
-        toolbar={
+    <Results search={search(true)} back={back}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           <Suspense>
-            <FilterBar tierCounts={tierCounts} />
+            <FilterButton facts={ranked.map(factsOf)} />
+            <SortButton />
           </Suspense>
-        }
-        empty={
+        </div>
+        {compareIds.length > 1 && (
+          <Link
+            href={`/bandingkan?rs=${compareIds.join(",")}&q=${encodeURIComponent(treatment.name)}`}
+            className={buttonVariants({ variant: "outline" })}
+          >
+            <GitCompareArrows data-icon="inline-start" />
+            Bandingkan {compareIds.length} teratas
+          </Link>
+        )}
+      </div>
+
+      {results.length > 0 ? (
+        <ol className="mt-3 grid gap-3">
+          {results.map((r) => (
+            <ResultCard key={r.id} result={r} treatmentName={treatment.name} />
+          ))}
+        </ol>
+      ) : (
+        <div className="mt-3">
           <EmptyState
             title="Tidak ada rumah sakit yang cocok"
             description={`${countActiveFilters(filters)} filter aktif menyaring semua ${ranked.length} rumah sakit.`}
-            action={
-              <Suspense>
-                <ResetFiltersButton />
-              </Suspense>
-            }
-          />
-        }
-      />
-
-      <section className="px-4 py-7 sm:px-8">
-        <h2 className="text-base font-semibold tracking-tight">Sebaran tarif</h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">Tarif minimum–maksimum per rumah sakit. Garis tegak adalah median.</p>
-        <div className="mt-4">
-          <PriceRangeChart
-            median={median}
-            data={ranked.map((m) => ({ name: m.summary.hospital.name, tier: m.tier, min: m.line.priceMin, max: m.line.priceMax }))}
-          />
+          >
+            <Suspense>
+              <ResetFiltersButton />
+            </Suspense>
+          </EmptyState>
         </div>
-      </section>
+      )}
+    </Results>
+  );
+}
+
+/** The hospitals ranked for a whole accident case, each holding the tindakan its document prices. */
+async function CaseRecommendation({ accidentCase, origin, bookIds }: { accidentCase: AccidentCase; origin: Origin; bookIds: string[] }) {
+  const [data, lines] = await Promise.all([getDataset(), getTreatmentLines(accidentCaseKeys(accidentCase), bookIds)]);
+  const ranked = rankForCase(lines, accidentCase.steps, origin, data);
+  const compareIds = ranked.slice(0, MAX_COMPARE).map((m) => m.summary.hospital.id);
+
+  return (
+    <>
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-balance">{accidentCase.name}</h1>
+          <p className="mt-1 text-sm text-muted-foreground text-pretty">{accidentCase.description}</p>
+        </div>
+        {compareIds.length > 1 && (
+          <Link href={`/bandingkan?rs=${compareIds.join(",")}`} className={buttonVariants({ variant: "outline" })}>
+            <GitCompareArrows data-icon="inline-start" />
+            Bandingkan {compareIds.length} teratas
+          </Link>
+        )}
+      </div>
+
+      {ranked.length > 0 ? (
+        <ol className="mt-5 grid gap-3">
+          {ranked.map((m) => (
+            <CaseResultCard key={m.summary.hospital.id} match={m} caseId={accidentCase.id} location={origin.city} />
+          ))}
+        </ol>
+      ) : (
+        <div className="mt-5">
+          <EmptyState title="Belum ada rumah sakit untuk kasus ini" />
+        </div>
+      )}
     </>
   );
 }
 
-/** The recommendation itself, stated plainly before any list: where to refer and why. */
-function Answer({ match: m, query }: { match: TreatmentMatch; query: string }) {
-  const level = fairPriceLevel(m.savingVsMedian);
+/** After a search: the search in a bar on top, what it found below. */
+function Results({ search, back, children }: { search: React.ReactNode; back?: { href: string; label: string }; children: React.ReactNode }) {
   return (
-    <section aria-label="Rekomendasi" className="border-b px-4 py-6 sm:px-8">
-      <p className="text-sm text-muted-foreground">Rujuk ke</p>
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Link href={`/rumah-sakit/${m.summary.hospital.id}`} className="text-2xl font-semibold tracking-tight hover:underline">
-          {m.summary.hospital.name}
-        </Link>
-        <TierBadge tier={m.tier} />
+    <>
+      <div className="z-20 border-b bg-background/95 backdrop-blur md:sticky md:top-0">
+        <div className="mx-auto w-full max-w-7xl px-4 py-3 sm:px-8">{search}</div>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {joinFacts(m.summary.hospital.city, LOCALITY_LABEL[m.locality])} · {m.line.rawName} (hal. {m.line.page})
-      </p>
-      <dl className="mt-4 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-3">
-        <div>
-          <dt className="text-xs text-muted-foreground">Tarif {query}</dt>
-          <dd className="mt-0.5 text-lg font-semibold tabular-nums">{formatRange(m.line.priceMin, m.line.priceMax)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">Dibanding harga wajar</dt>
-          <dd className="mt-1 flex items-center gap-2">
-            <RatingPill level={level} />
-            <span className="text-xs text-muted-foreground">{medianDelta(m.savingVsMedian)}</span>
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">Layanan rumah sakit</dt>
-          <dd className="mt-1 flex items-center gap-2">
-            <RatingPill level={m.summary.services.level} />
-            <span className="truncate text-xs text-muted-foreground">{m.summary.services.reason}</span>
-          </dd>
-        </div>
-      </dl>
-    </section>
+      <div className="mx-auto w-full max-w-7xl px-4 pt-5 pb-7 sm:px-8">
+        {back && (
+          <Link href={back.href} className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+            <ChevronLeft className="size-4" />
+            {back.label}
+          </Link>
+        )}
+        {children}
+      </div>
+    </>
   );
 }
 
-/** Four quick facts about every hospital that has it, before any filter. */
-function Summary({ ranked, median, tierA }: { ranked: TreatmentMatch[]; median: number; tierA: number }) {
-  const cheapest = ranked.reduce((best, m) => (m.priceMid < best.priceMid ? m : best));
-  const local = ranked.filter((m) => m.locality === "kota");
-
-  return (
-    <dl className="grid grid-cols-2 gap-6 border-b px-4 py-7 sm:px-8 lg:grid-cols-4">
-      <Fact label="Rumah sakit punya tarifnya" value={`${ranked.length} RS`}>
-        {tierA} Tier A
-      </Fact>
-      <Fact label="Harga wajar" value={formatJuta(median)}>
-        Median tarif semua RS
-      </Fact>
-      <Fact label="Tarif termurah" value={formatRange(cheapest.line.priceMin, cheapest.line.priceMax)}>
-        <HospitalLink match={cheapest} />
-      </Fact>
-      <Fact label="Di kota ini" value={`${local.length} RS`}>
-        {local[0] ? <HospitalLink match={local[0]} /> : "Rujuk ke kota lain"}
-      </Fact>
-    </dl>
-  );
-}
-
-function Fact({ label, value, children }: { label: string; value: string; children: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <dt className="truncate text-sm text-foreground/80">{label}</dt>
-      <dd className="mt-2 text-2xl font-medium tracking-tight whitespace-nowrap tabular-nums sm:text-3xl">{value}</dd>
-      <dd className="mt-1 truncate text-xs text-muted-foreground">{children}</dd>
-    </div>
-  );
-}
-
-function HospitalLink({ match: m }: { match: TreatmentMatch }) {
-  return (
-    <Link href={`/rumah-sakit/${m.summary.hospital.id}`} className="hover:text-foreground hover:underline">
-      {m.summary.hospital.name} · Tier {m.tier}
-    </Link>
-  );
-}
-
-function EmptyState({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
+function EmptyState({ title, description, children }: { title: string; description?: string; children?: React.ReactNode }) {
   return (
     <div className="flex flex-col items-center rounded-xl border border-dashed px-6 py-12 text-center">
       <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -224,7 +198,7 @@ function EmptyState({ title, description, action }: { title: string; description
       </span>
       <h3 className="mt-3 text-sm font-semibold text-balance">{title}</h3>
       {description && <p className="mt-1 max-w-sm text-sm text-muted-foreground text-pretty">{description}</p>}
-      {action && <div className="mt-4">{action}</div>}
+      {children && <div className="mt-4">{children}</div>}
     </div>
   );
 }

@@ -57,8 +57,8 @@ export function Resources({ hospital, catalog }: { hospital: Hospital; catalog: 
       name: f.name,
       icon: FACILITY_ICON[f.id] ?? Stethoscope,
       present: Boolean(item),
-      value: item && item.qty > 1 ? `${item.qty} unit` : undefined,
-      roundTheClock: item?.available24h,
+      value: item?.qty ? `${item.qty} unit` : undefined,
+      roundTheClock: item?.available24h ?? undefined,
     };
   });
   const staff: Item[] = catalog.specialties.map((s) => {
@@ -68,8 +68,8 @@ export function Resources({ hospital, catalog }: { hospital: Hospital; catalog: 
       name: s.name,
       icon: SPECIALTY_ICON[s.id] ?? Stethoscope,
       present: Boolean(member),
-      value: member && `${member.headcount} dokter`,
-      roundTheClock: member?.onCall24h,
+      value: member?.headcount ? `${member.headcount} dokter` : undefined,
+      roundTheClock: member?.onCall24h ?? undefined,
     };
   });
 

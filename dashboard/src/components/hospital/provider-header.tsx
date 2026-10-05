@@ -2,10 +2,10 @@ import { ArrowLeft, GitCompareArrows, MapPin, Upload } from "lucide-react";
 import Link from "next/link";
 
 import { RatingPill } from "@/components/rating";
-import { TierBadge } from "@/components/tier-badge";
+import { TipeBadge } from "@/components/tier-badge";
 import { buttonVariants } from "@/components/ui/button";
 import type { Hospital } from "@/lib/data/types";
-import { formatDate, joinFacts, kelasLabel } from "@/lib/format";
+import { formatDate, joinFacts } from "@/lib/format";
 import type { HospitalSummary } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
@@ -26,19 +26,15 @@ export function ProviderHeader({ summary, peer }: { summary: HospitalSummary; pe
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
             <h1 className="text-2xl font-semibold tracking-tight text-balance">{hospital.name}</h1>
-            {summary.tier && <TierBadge tier={summary.tier} showLabel />}
+            {summary.tipe && <TipeBadge tipe={summary.tipe} />}
           </div>
           <p className="mt-2 flex items-start gap-1.5 text-sm text-muted-foreground">
             <MapPin className="mt-0.5 size-4 shrink-0" />
             {[hospital.address, hospital.city, hospital.province].filter(Boolean).join(", ")}
           </p>
           <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
-            {joinFacts(
-              kelasLabel(hospital.kelas),
-              hospital.ownership,
-              hospital.beds > 0 && `${hospital.beds.toLocaleString("id-ID")} tempat tidur`,
-            )}
-            {(hospital.kelas || hospital.ownership || hospital.beds > 0) && " · "}
+            {joinFacts(hospital.ownership, hospital.beds > 0 && `${hospital.beds.toLocaleString("id-ID")} tempat tidur`)}
+            {(hospital.ownership || hospital.beds > 0) && " · "}
             <span className={cn(!hospital.partner && "text-tier-c-ink")}>{hospital.partner ? "Mitra PKS" : "Belum mitra PKS"}</span>
           </p>
         </div>

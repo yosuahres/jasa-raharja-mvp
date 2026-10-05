@@ -1,4 +1,4 @@
-import type { PriceLevel, Rating, ServiceLevel } from "@/lib/scoring";
+import type { PriceLevel, ServiceLevel } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
 const LEVEL: Record<PriceLevel | ServiceLevel, { label: string; tone: "good" | "mid" | "bad" }> = {
@@ -28,17 +28,6 @@ export function RatingPill({ level, className }: { level: PriceLevel | ServiceLe
   );
 }
 
-/** A labelled rating with the line that explains it. */
-export function RatingLine({ label, rating }: { label: string; rating: Rating<PriceLevel | ServiceLevel> | null }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <RatingPill level={rating?.level ?? null} className="mt-0.5" />
-      {rating && <p className="mt-0.5 truncate text-xs text-muted-foreground">{rating.reason}</p>}
-    </div>
-  );
-}
-
 /** How the ratings are made, in three lines, for anyone wondering why a hospital sits where it does. */
 export function MethodNote({ className }: { className?: string }) {
   return (
@@ -56,8 +45,8 @@ export function MethodNote({ className }: { className?: string }) {
           Sepertiga terlengkap Lengkap, tengah Cukup, sisanya Terbatas.
         </li>
         <li>
-          <span className="font-medium text-foreground">Tier</span>: Harga dan Layanan sama bobotnya. Sepertiga teratas Tier A, tengah Tier B,
-          bawah Tier C.
+          <span className="font-medium text-foreground">Tipe</span>: peringkat dari Harga dan Layanan, sama bobotnya. Seperempat teratas Tipe A,
+          lalu Tipe B, Tipe C, dan Tipe D.
         </li>
       </ul>
     </details>

@@ -1,10 +1,11 @@
 import { ArrowRight, Check, X } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
 import { PageHeader } from "@/components/page-header";
 import { RatingPill } from "@/components/rating";
-import { TierBadge } from "@/components/tier-badge";
+import { TipeBadge } from "@/components/tier-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
@@ -13,10 +14,15 @@ import { UrlSelect } from "@/components/url-select";
 import { CARE_CATEGORIES, categoryLabel } from "@/lib/categories";
 import { getBookRowStats, getDataset, searchLines } from "@/lib/data/queries";
 import type { Dataset, Hospital } from "@/lib/data/types";
-import { formatDate, formatJuta, formatPercent, formatRange, joinFacts, kelasLabel } from "@/lib/format";
+import { formatDate, formatJuta, formatPercent, formatRange, joinFacts } from "@/lib/format";
 import { allSummaries, fairPriceLevel, type HospitalSummary, originsOf, rankForTreatment, summarize, type TreatmentMatch } from "@/lib/scoring";
 import { type Completeness, dataCompleteness } from "@/lib/tariff-book";
 import { cn } from "@/lib/utils";
+
+export const metadata: Metadata = {
+  title: "Bandingkan Rumah Sakit",
+  description: "Bandingkan tarif, layanan, dan fasilitas rumah sakit",
+};
 
 const MAX_COMPARE = 3;
 
@@ -119,7 +125,7 @@ export default async function ComparePage({ searchParams }: PageProps<"/bandingk
 }
 
 function PickHospitals({ ranked, ids, query }: { ranked: HospitalSummary[]; ids: string[]; query: string }) {
-  const suggestion = ranked.filter((s) => s.tier !== null).slice(0, MAX_COMPARE);
+  const suggestion = ranked.filter((s) => s.tipe !== null).slice(0, MAX_COMPARE);
   return (
     <Card>
       <CardHeader>
@@ -168,9 +174,9 @@ function PickHospitals({ ranked, ids, query }: { ranked: HospitalSummary[]; ids:
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{s.hospital.name}</span>
-                    <span className="block text-xs text-muted-foreground">{joinFacts(s.hospital.city, kelasLabel(s.hospital.kelas))}</span>
+                    <span className="block text-xs text-muted-foreground">{s.hospital.city}</span>
                   </span>
-                  {s.tier ? <TierBadge tier={s.tier} /> : <span className="text-xs text-muted-foreground">Tanpa tarif</span>}
+                  {s.tipe ? <TipeBadge tipe={s.tipe} /> : <span className="text-xs text-muted-foreground">Tanpa tarif</span>}
                 </Link>
               </li>
             );
@@ -369,7 +375,6 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
             />
 
             <Section title="Profil" />
-            <CompareRow label="Tipe RS" columns={columns} render={(c) => kelasLabel(c.hospital.kelas) ?? "—"} />
             <CompareRow label="Kepemilikan" columns={columns} render={(c) => c.hospital.ownership ?? "—"} />
             <CompareRow label="Kota" columns={columns} render={(c) => joinFacts(c.hospital.city, c.hospital.province) || "—"} />
             <CompareRow
@@ -385,7 +390,7 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
                 label={f.name}
                 columns={columns}
                 render={(c) => {
-                  const present = c.hospital.facilities.some((x) => x.facilityId === f.id && x.qty > 0);
+                  const present = c.hospital.facilities.some((x) => x.facilityId === f.id);
                   return <Presence present={present} detail={present ? "Ada" : "Tidak ada"} />;
                 }}
               />
@@ -398,7 +403,7 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
                 label={s.name}
                 columns={columns}
                 render={(c) => {
-                  const present = c.hospital.staff.some((x) => x.specialtyId === s.id && x.headcount > 0);
+                  const present = c.hospital.staff.some((x) => x.specialtyId === s.id);
                   return <Presence present={present} detail={present ? "Ada" : "Tidak ada"} />;
                 }}
               />
@@ -462,7 +467,7 @@ function HospitalHeader({ column: c, ids, query }: { column: Column; ids: string
         </Link>
       </div>
       <div className="mt-2 flex items-center gap-2">
-        {c.summary.tier ? <TierBadge tier={c.summary.tier} /> : <span className="text-xs font-normal text-muted-foreground">Tanpa tarif</span>}
+        {c.summary.tipe ? <TipeBadge tipe={c.summary.tipe} /> : <span className="text-xs font-normal text-muted-foreground">Tanpa tarif</span>}
         {c.summary.placing && (
           <span className="text-xs font-normal text-muted-foreground tabular-nums">
             Peringkat <span className="text-sm font-semibold text-foreground">{c.summary.placing.rank}</span> dari {c.summary.placing.of}

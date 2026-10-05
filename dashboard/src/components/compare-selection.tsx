@@ -60,12 +60,12 @@ export function CompareCheckbox({ id, name }: { id: string; name: string }) {
   const full = !checked && selected.length >= MAX_COMPARE;
 
   return (
-    // Sits above the row's stretched link so ticking it never opens the detail page.
+    // The row opens the detail page when clicked, but not through this label.
     // The padding widens the hit area around the small native checkbox.
     <label
       title={full ? `Maksimal ${MAX_COMPARE} rumah sakit` : undefined}
       className={cn(
-        "relative z-10 -m-2 grid size-8 place-items-center rounded-md",
+        "-m-2 grid size-8 place-items-center rounded-md",
         full ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:bg-muted",
       )}
     >

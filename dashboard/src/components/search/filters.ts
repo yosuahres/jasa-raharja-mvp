@@ -58,12 +58,41 @@ export const parseFilters = (get: (key: string) => string | null | undefined): F
 export const countActiveFilters = (f: Filters) =>
   [f.tiers.length < TIERS.length, f.area !== null, f.priceFactor !== null, f.partnerOnly, f.activeOnly].filter(Boolean).length;
 
-export const applyFilters = (list: TreatmentMatch[], f: Filters) =>
-  list.filter(
-    (m) =>
-      f.tiers.includes(m.tier) &&
-      (f.area === null || LOCALITY_RANK[m.locality] <= LOCALITY_RANK[f.area]) &&
-      (f.priceFactor === null || m.priceMid <= m.medianPrice * f.priceFactor) &&
-      (!f.partnerOnly || m.summary.hospital.partner) &&
-      (!f.activeOnly || !m.summary.dataExpired),
-  );
+export const DEFAULT_FILTERS: Filters = { tiers: TIERS, area: null, priceFactor: null, partnerOnly: false, activeOnly: false };
+
+/** Filters as URL params; `null` removes one. The inverse of parseFilters. */
+export const filterParams = (f: Filters): Record<(typeof FILTER_PARAMS)[number], string | null> => ({
+  tier: f.tiers.length === TIERS.length ? null : TIERS.filter((t) => f.tiers.includes(t)).join(","),
+  jarak: f.area,
+  harga: PRICE_OPTIONS.find((o) => o.factor === f.priceFactor)?.value || null,
+  pks: f.partnerOnly ? "1" : null,
+  aktif: f.activeOnly ? "1" : null,
+});
+
+/** What the filters look at in a match: small and serializable, so the filter panel can count results as you choose. */
+export type FilterFacts = {
+  tier: Tier;
+  locality: Locality;
+  priceMid: number;
+  medianPrice: number;
+  partner: boolean;
+  expired: boolean;
+};
+
+export const factsOf = (m: TreatmentMatch): FilterFacts => ({
+  tier: m.tier,
+  locality: m.locality,
+  priceMid: m.priceMid,
+  medianPrice: m.medianPrice,
+  partner: m.summary.hospital.partner,
+  expired: m.summary.dataExpired,
+});
+
+export const matchesFilters = (x: FilterFacts, f: Filters) =>
+  f.tiers.includes(x.tier) &&
+  (f.area === null || LOCALITY_RANK[x.locality] <= LOCALITY_RANK[f.area]) &&
+  (f.priceFactor === null || x.priceMid <= x.medianPrice * f.priceFactor) &&
+  (!f.partnerOnly || x.partner) &&
+  (!f.activeOnly || !x.expired);
+
+export const applyFilters = (list: TreatmentMatch[], f: Filters) => list.filter((m) => matchesFilters(factsOf(m), f));

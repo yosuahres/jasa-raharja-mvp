@@ -2,21 +2,22 @@
 
 import {
   Building2,
+  ChevronDown,
   FileUp,
-  LayoutDashboard,
   type LucideIcon,
+  MapIcon,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
   Route,
+  Search,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 
-import { ThemeToggle } from "@/components/theme-toggle";
-import { buttonVariants } from "@/components/ui/button";
+import { CommandPalette, type PaletteHospital } from "@/components/command-palette";
 import {
   Tooltip,
   TooltipContent,
@@ -33,18 +34,34 @@ type NavItem = {
   also?: string[];
 };
 
-const NAV: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/rekomendasi", label: "Cari Rujukan", icon: Route },
-  { href: "/rumah-sakit", label: "Rumah Sakit", icon: Building2 },
-];
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+  /** Its icons sit white on a blue tile instead of plain grey. */
+  tiled?: boolean;
+};
 
+const NAV: NavGroup[] = [
+  {
+    label: "Rujukan",
+    tiled: true,
+    items: [
+      { href: "/rekomendasi", label: "Cari Rujukan", icon: Route },
+      { href: "/rumah-sakit", label: "Rumah Sakit", icon: Building2 },
+      { href: "/peta", label: "Peta Rumah Sakit", icon: MapIcon },
+    ],
+  },
+  {
+    label: "Entri",
+    items: [{ href: "/input", label: "Input Data", icon: FileUp }],
+  },
+];
 
 const isActive = (pathname: string, { href, also = [] }: NavItem) =>
   href === "/" ? pathname === "/" : [href, ...also].some((prefix) => pathname.startsWith(prefix));
 
 const titleOf = (pathname: string) =>
-  pathname.startsWith("/input") ? "Upload dokumen" : (NAV.find((item) => isActive(pathname, item))?.label ?? "");
+  NAV.flatMap((group) => group.items).find((item) => isActive(pathname, item))?.label ?? "";
 
 // The collapsed state lives on <html data-sidebar> (set before paint in the root layout) so CSS can style it without a flash.
 const readCollapsed = () =>
@@ -72,6 +89,11 @@ const setCollapsed = (collapsed: boolean) => {
 const useSidebarCollapsed = () =>
   useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
 
+// The shortcut hint matches the keyboard: ⌘ on Apple devices, Ctrl elsewhere.
+const subscribeNothing = () => () => {};
+const readModKey = () => (/Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘" : "Ctrl");
+const useModKey = () => useSyncExternalStore(subscribeNothing, readModKey, () => "⌘");
+
 const LOGO = "/databiota-logo.png";
 const LOGO_HEIGHT = 22;
 
@@ -81,19 +103,30 @@ const FADE =
 
 export function AppShell({
   user,
+  hospitals,
   children,
 }: {
   user: CurrentUser;
+  hospitals: PaletteHospital[];
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const collapsed = useSidebarCollapsed();
+  // Which groups are folded away; shared by the desktop sidebar and the mobile drawer.
+  const [closedGroups, setClosedGroups] = useState<string[]>([]);
+  const toggleGroup = (label: string) =>
+    setClosedGroups((closed) => (closed.includes(label) ? closed.filter((l) => l !== label) : [...closed, label]));
+  const openSearch = () => {
+    setOpen(false);
+    setSearchOpen(true);
+  };
 
   return (
     <div className="flex min-h-screen bg-shell">
       <aside className="sticky top-0 hidden h-screen w-50 shrink-0 overflow-hidden transition-[width] duration-200 ease-out motion-reduce:transition-none lg:block sidebar-collapsed:w-11">
-        <Sidebar pathname={pathname} user={user} />
+        <Sidebar pathname={pathname} user={user} onSearch={openSearch} closedGroups={closedGroups} onToggleGroup={toggleGroup} />
       </aside>
 
       {open && (
@@ -111,14 +144,21 @@ export function AppShell({
             >
               <X className="size-4" />
             </button>
-            <Sidebar pathname={pathname} user={user} onNavigate={() => setOpen(false)} />
+            <Sidebar
+              pathname={pathname}
+              user={user}
+              onSearch={openSearch}
+              closedGroups={closedGroups}
+              onToggleGroup={toggleGroup}
+              onNavigate={() => setOpen(false)}
+            />
           </aside>
         </div>
       )}
 
       <div className="flex min-w-0 flex-1 flex-col lg:py-2 lg:pr-2">
         <div className="flex min-h-0 flex-1 flex-col bg-background lg:rounded-xl lg:shadow-[0_1px_2px_rgb(0_0_0/0.04),0_0_0_1px_var(--border)]">
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+          <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
             <button
               aria-label="Buka menu"
               className="-ml-1.5 rounded-md p-1.5 text-muted-foreground hover:bg-accent lg:hidden"
@@ -139,20 +179,12 @@ export function AppShell({
               )}
             </button>
             <h1 className="truncate text-sm text-foreground">{titleOf(pathname)}</h1>
-            <div className="ml-auto flex items-center gap-3">
-              {/* The dashboard stays a read-only overview; uploading starts from the other pages. */}
-              {pathname !== "/" && (
-                <Link href="/input" className={cn(buttonVariants({ variant: "outline", size: "sm" }), pathname === "/input" && "bg-muted")}>
-                  <FileUp />
-                  <span className="max-sm:sr-only">Upload dokumen</span>
-                </Link>
-              )}
-              <ThemeToggle />
-            </div>
           </header>
           <main className="min-w-0 flex-1 overflow-x-clip">{children}</main>
         </div>
       </div>
+
+      <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} hospitals={hospitals} />
     </div>
   );
 }
@@ -163,13 +195,20 @@ export function AppShell({
 function Sidebar({
   pathname,
   user,
+  onSearch,
+  closedGroups,
+  onToggleGroup,
   onNavigate,
 }: {
   pathname: string;
   user: CurrentUser;
+  onSearch: () => void;
+  closedGroups: string[];
+  onToggleGroup: (label: string) => void;
   onNavigate?: () => void;
 }) {
   const collapsed = useSidebarCollapsed();
+  const modKey = useModKey();
 
   // The page under a clicked item can take a moment to load, so the item lights up on the click
   // and lets the URL take over once it arrives.
@@ -206,27 +245,81 @@ function Sidebar({
         />
       </Link>
 
-      <nav className="mt-6 flex flex-col gap-0.5">
-        {NAV.map((item) => {
-          const { href, label, icon: Icon } = item;
+      {/* Collapsed, the box drops away and only the icon stays, lined up with the nav icons below. */}
+      <Tooltip disabled={!collapsed}>
+        <TooltipTrigger
+          render={
+            <button
+              onClick={onSearch}
+              aria-keyshortcuts="Meta+K Control+K"
+              className="mt-5 flex h-7 w-full items-center gap-2.5 overflow-hidden rounded-md border border-foreground/15 bg-background px-[5px] text-left whitespace-nowrap shadow-xs transition-colors hover:bg-background/80 sidebar-collapsed:border-transparent sidebar-collapsed:bg-transparent sidebar-collapsed:shadow-none sidebar-collapsed:hover:bg-sidebar-accent"
+            />
+          }
+        >
+          <Search className="size-4 shrink-0 text-muted-foreground" />
+          <span className={cn("flex-1 text-xs text-muted-foreground", FADE)}>Cari</span>
+          <span className={cn("flex items-center gap-0.5", FADE)} aria-hidden>
+            <kbd className="rounded border px-1 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">{modKey}</kbd>
+            <kbd className="rounded border px-1 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">K</kbd>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="right">Cari</TooltipContent>
+      </Tooltip>
+
+      <nav className="mt-4 flex flex-col gap-3">
+        {NAV.map((group) => {
+          const groupOpen = !closedGroups.includes(group.label);
           return (
-            <Tooltip key={href} disabled={!collapsed}>
-              <TooltipTrigger
-                render={
-                  <Link
-                    href={href}
-                    onClick={onItemClick(href)}
-                    aria-current={isCurrent(item) ? "page" : undefined}
-                    className="group flex h-7 items-center gap-2.5 overflow-hidden rounded-lg px-1.5 text-sm whitespace-nowrap text-sidebar-foreground transition-colors hover:bg-sidebar-accent aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground"
-                  />
-                }
-              >
-                {/* Icons sit dimmed behind the labels and come up to full strength on hover and on the current page. */}
-                <Icon className="size-4 shrink-0 opacity-55 transition-opacity group-hover:opacity-100 group-active:opacity-100 group-aria-[current=page]:opacity-100" />
-                <span className={FADE}>{label}</span>
-              </TooltipTrigger>
-              <TooltipContent side="right">{label}</TooltipContent>
-            </Tooltip>
+            <div key={group.label} className="flex flex-col gap-0.5">
+              {/* Collapsed, the header gives way to a short rule of the same height, so the icons below don't move. */}
+              <div className="relative flex h-6 items-center">
+                <button
+                  onClick={() => onToggleGroup(group.label)}
+                  aria-expanded={groupOpen}
+                  className={cn(
+                    "flex h-full w-full items-center gap-1 rounded-md px-1 text-left whitespace-nowrap transition-colors hover:bg-sidebar-accent sidebar-collapsed:pointer-events-none",
+                    FADE,
+                  )}
+                >
+                  <ChevronDown className={cn("size-3 shrink-0 text-muted-foreground transition-transform", !groupOpen && "-rotate-90")} />
+                  <span className="text-[11px] text-muted-foreground">{group.label}</span>
+                </button>
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute left-1.5 h-px w-4 bg-border opacity-0 transition-opacity duration-200 ease-out motion-reduce:transition-none sidebar-collapsed:opacity-100"
+                />
+              </div>
+              {/* The collapsed rail has no headers to unfold a group with, so it always lists every item. */}
+              <div className={cn("flex flex-col gap-0.5", !groupOpen && "hidden sidebar-collapsed:flex")}>
+                {group.items.map((item) => {
+                  const { href, label, icon: Icon } = item;
+                  return (
+                    <Tooltip key={href} disabled={!collapsed}>
+                      <TooltipTrigger
+                        render={
+                          <Link
+                            href={href}
+                            onClick={onItemClick(href)}
+                            aria-current={isCurrent(item) ? "page" : undefined}
+                            className="flex h-7 items-center gap-2.5 overflow-hidden rounded-md px-1.5 text-[13px] font-medium whitespace-nowrap text-sidebar-foreground transition-colors hover:bg-sidebar-accent aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground"
+                          />
+                        }
+                      >
+                        {group.tiled ? (
+                          <span className="flex size-4 shrink-0 items-center justify-center rounded bg-blue-500 text-white">
+                            <Icon className="size-3" />
+                          </span>
+                        ) : (
+                          <Icon className="size-4 shrink-0 text-muted-foreground/80" />
+                        )}
+                        <span className={FADE}>{label}</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">{label}</TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </nav>
