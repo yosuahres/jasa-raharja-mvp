@@ -48,7 +48,6 @@ _PROVINCE = re.compile(r"\bPROVINSI\s+([A-Z][A-Z ]{2,30}?)(?:\s+NOMOR|\s+TAHUN|\
 _YEAR = re.compile(r"\bTAHUN\s+(20\d{2})\b", re.I)
 _BARE_YEAR = re.compile(r"\b(20\d{2})\b")
 _ADDRESS = re.compile(r"\b(?:Jl\.?|Jln\.?|Jalan)\s+[A-Za-z0-9 .,'/-]{4,80}", re.I)
-_KELAS = re.compile(r"\b(?:KELAS|TIPE|TYPE)\s+([ABCD])\b(?!\s*[/.]?\s*[IVX\d])")
 _GOVERNMENT = re.compile(r"\b(RSUD|RSU DAERAH|PERATURAN (DAERAH|GUBERNUR|BUPATI|WALIKOTA)|PERDA|PERGUB|PEMERINTAH (KABUPATEN|KOTA|PROVINSI))\b", re.I)
 _MILITARY = re.compile(r"\b(BHAYANGKARA|TNI|POLRI|RSAD|RSAL|RSAU|KESDAM|RUMKIT)\b", re.I)
 _STATE_COMPANY = re.compile(r"\b(PELNI|PERTAMINA|PTPN|BUMN|PELINDO)\b", re.I)
@@ -151,12 +150,6 @@ def detect_profile(*, heading: str | None, file_name: str, rows: list[dict], fro
     address = _ADDRESS.search(front_text)
     if address:
         profile["address"] = _field(address.group(0).strip(" ,."), "Halaman depan")
-
-    for label, text in places:
-        kelas = _KELAS.search(text.upper())
-        if kelas:
-            profile["kelas"] = _field(kelas.group(1), f'"{kelas.group(0)}" di {label}')
-            break
 
     for pattern, ownership in ((_MILITARY, "TNI/Polri"), (_STATE_COMPANY, "BUMN"), (_PRIVATE, "Swasta"), (_GOVERNMENT, "Pemerintah")):
         hit = next(((label, m) for label, text in places if (m := pattern.search(text))), None)

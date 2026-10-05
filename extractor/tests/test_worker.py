@@ -17,6 +17,7 @@ class FakeSupabase:
             "tariff_books": books,
             "tariff_rows": [],
             "tariff_prices": [],
+            "tariff_treatments": [],
             "facilities": [],
             "specialties": [],
             "procedures": [],
@@ -27,7 +28,17 @@ class FakeSupabase:
         self.files = files
 
     def _matches(self, row: dict, filters: dict[str, str]) -> bool:
-        return all(str(row.get(k)) == v.removeprefix("eq.") for k, v in filters.items() if v.startswith("eq."))
+        def holds(value, condition: str) -> bool:
+            op, _, operand = condition.partition(".")
+            if op == "eq":
+                return str(value) == operand
+            if op == "lt":
+                return (value or 0) < int(operand)
+            if op == "in":
+                return str(value) in operand.strip("()").split(",")
+            return True
+
+        return all(holds(row.get(k), v) for k, v in filters.items())
 
     def select(self, table, params):
         filters = {k: v for k, v in params.items() if k not in {"order", "limit", "offset", "select"}}
@@ -150,3 +161,36 @@ def test_every_row_is_kept_with_a_category(ubaya_bytes):
     assert len(rows) == 446 and all(r["category"] for r in rows)
     icu = next(r for r in rows if r["raw_name"] == "INTENSIVE CARE UNIT (ICU/ICCU/PICU/NICU)")
     assert icu["category"] == "kamar"
+
+
+def test_the_tindakan_each_row_prices_are_named(ubaya_bytes):
+    client = FakeSupabase([_book()], {"rs-ubaya/b1.pdf": ubaya_bytes})
+
+    worker.process(client, worker.claim_next(client))
+
+    named = client.tables["tariff_treatments"]
+    rows = {r["id"]: r for r in client.tables["tariff_rows"]}
+    assert named and all(rows[t["row_id"]]["category"] in {"operatif", "tindakan"} for t in named)
+    debridement = sorted({t["name"] for t in named if t["key"] == "DEBRIDEMEN"})  # printed in two tables
+    assert debridement == ["Debridement — Berat", "Debridement — Ringan", "Debridement — Sedang"]
+    assert client.tables["tariff_books"][0]["treatments_version"] == worker.TREATMENTS_VERSION
+
+
+def test_documents_named_under_older_rules_are_named_again():
+    rows = [
+        {"id": "r1", "book_id": "old", "raw_name": "PEMASANGAN KATETER", "parents": [], "members": [], "category": "tindakan"},
+        {"id": "r2", "book_id": "old", "raw_name": "Kamar", "parents": [], "members": [], "category": "kamar"},
+    ]
+    books = [
+        _book(id="old", status="published", treatments_version=0),
+        _book(id="current", status="published", treatments_version=worker.TREATMENTS_VERSION),
+        _book(id="waiting", status="queued", treatments_version=0),
+    ]
+    client = FakeSupabase(books, {})
+    client.tables["tariff_rows"] = rows
+    client.tables["tariff_treatments"] = [{"row_id": "r1", "book_id": "old", "name": "x", "key": "stale"}]
+
+    worker.rekey_treatments(client)
+
+    assert client.tables["tariff_treatments"] == [{"row_id": "r1", "book_id": "old", "name": "PEMASANGAN KATETER", "key": "KATETER PASANG"}]
+    assert [b["treatments_version"] for b in client.tables["tariff_books"]] == [worker.TREATMENTS_VERSION] * 2 + [0]

@@ -5,8 +5,12 @@
 
 Picks up books with status 'queued', downloads the PDF from Storage, finds which
 hospital it is about, extracts all of that hospital's rows, files each under a
-category, reads the hospital's profile, and leaves the book in 'review' for the
-dashboard's preview. A book that yields nothing ends as 'failed' with the reason.
+category, names the tindakan each prices, reads the hospital's profile, and leaves
+the book in 'review' for the dashboard's preview. A book that yields nothing ends
+as 'failed' with the reason.
+
+On start it also names the tindakan again in documents read under older rules
+(treatments.py), from their stored rows, so every document matches the same way.
 """
 
 import argparse
@@ -26,6 +30,7 @@ from app.masterdata import detect
 from app.categories import classify
 from app.profile import choose_hospital, detect_profile, prescan, short_name
 from app.supabase import Supabase, SupabaseError
+from app.treatments import TREATMENTS_VERSION, treatments
 
 log = logging.getLogger("worker")
 
@@ -46,6 +51,7 @@ def main() -> None:
     client = Supabase.from_env()
     sync_catalog(client)
     requeue_interrupted(client)
+    rekey_treatments(client)
     log.info("waiting for tariff books")
     while True:
         try:
@@ -79,6 +85,20 @@ def requeue_interrupted(client: Supabase) -> None:
     """Books left 'extracting' by a worker that stopped mid-way. Assumes one worker runs at a time."""
     for book in client.update("tariff_books", {"status": "eq.extracting"}, {"status": "queued", "pages_done": 0}):
         log.info("requeued interrupted book %s", book["id"])
+
+
+def rekey_treatments(client: Supabase) -> None:
+    """Documents whose tindakan were named under older rules: name them again from their stored rows."""
+    stale = client.select_all(
+        "tariff_books",
+        {"select": "id,source_file", "status": "in.(review,published)", "treatments_version": f"lt.{TREATMENTS_VERSION}", "order": "created_at"},
+    )
+    for book in stale:
+        rows = client.select_all(
+            "tariff_rows", {"select": "id,raw_name,parents,members,category", "book_id": f"eq.{book['id']}", "order": "position"}
+        )
+        count = save_treatments(client, book["id"], rows)
+        log.info("named %d tindakan in %s", count, book["source_file"])
 
 
 def claim_next(client: Supabase) -> dict | None:
@@ -178,6 +198,17 @@ def save_rows(client: Supabase, book_id: str, rows: list[dict], categories: list
         client.insert("tariff_rows", row_payload[start : start + ROW_BATCH])
     for start in range(0, len(price_payload), PRICE_BATCH):
         client.insert("tariff_prices", price_payload[start : start + PRICE_BATCH])
+    save_treatments(client, book_id, row_payload)
+
+
+def save_treatments(client: Supabase, book_id: str, rows: list[dict]) -> int:
+    """Replace the tindakan a book's rows price (treatments.py), from its rows as stored. Returns how many."""
+    client.delete("tariff_treatments", {"book_id": f"eq.{book_id}"})
+    payload = [{"row_id": row["id"], "book_id": book_id, **t} for row in rows for t in treatments(row, row["category"])]
+    for start in range(0, len(payload), PRICE_BATCH):
+        client.insert("tariff_treatments", payload[start : start + PRICE_BATCH])
+    set_book(client, book_id, {"treatments_version": TREATMENTS_VERSION})
+    return len(payload)
 
 
 def to_db_rows(book_id: str, rows: list[dict], categories: list[str] | None = None) -> tuple[list[dict], list[dict]]:
