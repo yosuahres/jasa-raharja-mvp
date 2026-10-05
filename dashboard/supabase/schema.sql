@@ -34,29 +34,32 @@ create table public.facilities (
 create table public.hospitals (
   id         text primary key default gen_random_uuid()::text,  -- used in URLs; a short slug reads better
   name       text not null,
-  kelas      text check (kelas in ('A', 'B', 'C', 'D')),                              -- null: not printed in its document
   ownership  text check (ownership in ('Pemerintah', 'Swasta', 'BUMN', 'TNI/Polri')),  -- null: not printed in its document
   city       text not null default '',  -- as its document prints it; empty when it doesn't
   province   text not null default '',
   address    text not null default '',
   partner    boolean not null default false,  -- has a cooperation agreement (PKS) with Jasa Raharja
   beds       integer not null default 0 check (beds >= 0),
+  lat        double precision,  -- from looking up its name and address on OpenStreetMap; null until found
+  lng        double precision,
+  geocoded_query text,          -- what was looked up; a changed address looks it up again
+  geocoded_at    timestamptz,   -- set with lat still null: nothing was found
   created_at timestamptz not null default now()
 );
 
 create table public.hospital_facilities (
   hospital_id   text not null references public.hospitals (id) on delete cascade,
   facility_id   text not null references public.facilities (id) on delete cascade,
-  qty           integer not null default 1 check (qty >= 0),
-  available_24h boolean not null default true,
+  qty           integer check (qty >= 0),  -- null: its document doesn't print how many
+  available_24h boolean,                    -- null: its document doesn't print its hours
   primary key (hospital_id, facility_id)
 );
 
 create table public.hospital_staff (
   hospital_id  text not null references public.hospitals (id) on delete cascade,
   specialty_id text not null references public.specialties (id) on delete cascade,
-  headcount    integer not null default 1 check (headcount >= 0),
-  on_call_24h  boolean not null default true,
+  headcount    integer check (headcount >= 0),  -- null: its document doesn't print how many
+  on_call_24h  boolean,                         -- null: its document doesn't print on-call hours
   primary key (hospital_id, specialty_id)
 );
 
@@ -87,6 +90,7 @@ create table public.tariff_books (
   category_counts      jsonb not null default '{}',   -- {category: rows}, from tariff_rows.category
   detected_facilities  jsonb not null default '[]',   -- [{id, rows, page, evidence}] per catalog facility
   detected_specialties jsonb not null default '[]',   -- same, per catalog specialty
+  treatments_version   integer not null default 0,    -- the rules that named its tindakan (extractor/app/treatments.py)
   uploaded_by     uuid default auth.uid() references auth.users (id) on delete set null,
   created_at      timestamptz not null default now(),
   extracted_at    timestamptz,
@@ -131,6 +135,19 @@ create table public.tariff_prices (
 
 create index tariff_prices_row_idx on public.tariff_prices (row_id);
 
+-- The tindakan a row prices, keyed so the same tindakan matches across hospitals' documents however
+-- each prints it (extractor/app/treatments.py). A group price has one per member it lists.
+create table public.tariff_treatments (
+  id      bigint generated always as identity primary key,
+  row_id  uuid not null references public.tariff_rows (id) on delete cascade,
+  book_id uuid not null references public.tariff_books (id) on delete cascade,
+  name    text not null,  -- as printed: the row's name, one of its members, or its heading and variant
+  key     text not null   -- what the tindakan is; equal keys are the same tindakan
+);
+
+create index tariff_treatments_key_idx on public.tariff_treatments (key, book_id);
+create index tariff_treatments_book_idx on public.tariff_treatments (book_id);
+
 -- How each hospital's prices compare with the others', from the rows their documents name the same way.
 create or replace view public.hospital_price_index with (security_invoker = true) as
 with current_books as (
@@ -170,6 +187,22 @@ from hospital_prices h
 join shared s using (name_key)
 group by h.hospital_id;
 
+-- Every tindakan in the hospitals' current documents, with how many hospitals price it. Cari Rujukan picks from it.
+create or replace view public.treatment_list with (security_invoker = true) as
+with current_books as (
+  select distinct on (hospital_id) id, hospital_id
+  from public.tariff_books
+  where status = 'published' and hospital_id is not null
+  order by hospital_id, published_at desc
+)
+select t.key,
+       array_agg(distinct t.name) as names,
+       count(distinct b.hospital_id)::integer as hospitals,
+       lower(t.key || ' ' || string_agg(distinct t.name, ' ')) as search  -- what typing in the picker matches
+from current_books b
+join public.tariff_treatments t on t.book_id = b.id
+group by t.key;
+
 -- ---------------------------------------------------------------- 4. access rules
 
 -- An internal tool: any signed-in staff member can read and edit everything.
@@ -179,7 +212,7 @@ declare
 begin
   foreach t in array array[
     'specialties', 'facilities', 'hospitals', 'hospital_facilities', 'hospital_staff',
-    'tariff_books', 'tariff_rows', 'tariff_prices'
+    'tariff_books', 'tariff_rows', 'tariff_prices', 'tariff_treatments'
   ] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('create policy "signed-in staff" on public.%I for all to authenticated using (true) with check (true)', t);
