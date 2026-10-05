@@ -2,9 +2,16 @@
 .env
 .env.*
 !.env.example
+!.env.docker.example
 
 # extractor (python)
 extractor/.venv/
 extractor/data/
 __pycache__/
 .pytest_cache/
+
+# sample tariff documents (client data, kept out of the repository)
+data/
+
+# supabase cli
+dashboard/supabase/.temp/
