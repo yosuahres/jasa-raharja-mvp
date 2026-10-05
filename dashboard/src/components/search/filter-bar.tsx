@@ -23,6 +23,7 @@ import {
   PRICE_OPTIONS,
   type SortKey,
   SORT_OPTIONS,
+  type SortOption,
   TIERS,
 } from "./filters";
 import { useUrlParams } from "./use-url-params";
@@ -67,6 +68,7 @@ export function FilterButton({ facts }: { facts: FilterFacts[] }) {
   const toggleTier = (tier: Tier) =>
     set({ tiers: filters.tiers.includes(tier) ? filters.tiers.filter((t) => t !== tier) : [...filters.tiers, tier] });
   const count = facts.filter((x) => matchesFilters(x, filters)).length;
+  const isCase = facts.some((x) => x.complete !== undefined);
 
   const apply = () => {
     update(filterParams(filters));
@@ -176,6 +178,11 @@ export function FilterButton({ facts }: { facts: FilterFacts[] }) {
                   <Pill pressed={filters.activeOnly} onClick={() => set({ activeOnly: !filters.activeOnly })}>
                     Tarif berlaku
                   </Pill>
+                  {isCase && (
+                    <Pill pressed={filters.completeOnly} onClick={() => set({ completeOnly: !filters.completeOnly })}>
+                      Semua tahap
+                    </Pill>
+                  )}
                 </Pills>
               </Section>
             </div>
@@ -209,10 +216,10 @@ function Section({ id, title, children }: { id: SectionId; title: string; childr
 }
 
 /** How the list is ordered, apart from the filters. Rekomendasi unless chosen otherwise; applies at once. */
-export function SortButton() {
+export function SortButton({ options = SORT_OPTIONS }: { options?: readonly SortOption[] }) {
   const { params, update } = useUrlParams();
-  const sort = parseSort(params.get("urut"));
-  const label = SORT_OPTIONS.find((o) => o.value === sort)?.label;
+  const sort = parseSort(params.get("urut"), options);
+  const label = options.find((o) => o.value === sort)?.label;
 
   return (
     <Menu.Root>
@@ -225,7 +232,7 @@ export function SortButton() {
         <Menu.Positioner className="isolate z-50 outline-none" sideOffset={4} align="start">
           <Menu.Popup className="min-w-48 origin-(--transform-origin) rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[scale,opacity] duration-100 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0">
             <Menu.RadioGroup value={sort} onValueChange={(value: SortKey) => update({ urut: value === "rekomendasi" ? null : value })}>
-              {SORT_OPTIONS.map((o) => (
+              {options.map((o) => (
                 <Menu.RadioItem
                   key={o.value}
                   value={o.value}

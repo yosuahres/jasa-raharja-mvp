@@ -1,8 +1,8 @@
 import type { Tier } from "@/lib/data/types";
-import { LOCALITY_RANK, type Locality, type TreatmentMatch } from "@/lib/scoring";
+import { type CaseMatch, LOCALITY_RANK, type Locality, type TreatmentMatch } from "@/lib/scoring";
 
 /** URL params owned by the filter bar. `q`, `lokasi` and `urut` are left alone on reset. */
-export const FILTER_PARAMS = ["tier", "jarak", "harga", "pks", "aktif"] as const;
+export const FILTER_PARAMS = ["tier", "jarak", "harga", "pks", "aktif", "lengkap"] as const;
 
 export const TIERS: Tier[] = ["A", "B", "C"];
 
@@ -24,10 +24,20 @@ export const SORT_OPTIONS = [
   { value: "jarak", label: "Terdekat" },
 ] as const;
 
-export type SortKey = (typeof SORT_OPTIONS)[number]["value"];
+/** For an accident case, also by how many of its steps a hospital covers. */
+export const CASE_SORT_OPTIONS = [
+  { value: "rekomendasi", label: "Rekomendasi" },
+  { value: "lengkap", label: "Terlengkap" },
+  { value: "harga", label: "Termurah" },
+  { value: "jarak", label: "Terdekat" },
+] as const;
 
-export const parseSort = (value: string | null | undefined): SortKey =>
-  SORT_OPTIONS.find((o) => o.value === value)?.value ?? "rekomendasi";
+export type SortOption = (typeof CASE_SORT_OPTIONS)[number];
+
+export type SortKey = SortOption["value"];
+
+export const parseSort = (value: string | null | undefined, options: readonly SortOption[] = SORT_OPTIONS): SortKey =>
+  options.find((o) => o.value === value)?.value ?? "rekomendasi";
 
 export type Filters = {
   tiers: Tier[];
@@ -36,6 +46,8 @@ export type Filters = {
   priceFactor: number | null;
   partnerOnly: boolean;
   activeOnly: boolean;
+  /** Only hospitals with something for every step of an accident case. */
+  completeOnly: boolean;
 };
 
 const isTier = (value: string): value is Tier => (TIERS as string[]).includes(value);
@@ -52,13 +64,14 @@ export const parseFilters = (get: (key: string) => string | null | undefined): F
     priceFactor: price?.factor ?? null,
     partnerOnly: get("pks") === "1",
     activeOnly: get("aktif") === "1",
+    completeOnly: get("lengkap") === "1",
   };
 };
 
 export const countActiveFilters = (f: Filters) =>
-  [f.tiers.length < TIERS.length, f.area !== null, f.priceFactor !== null, f.partnerOnly, f.activeOnly].filter(Boolean).length;
+  [f.tiers.length < TIERS.length, f.area !== null, f.priceFactor !== null, f.partnerOnly, f.activeOnly, f.completeOnly].filter(Boolean).length;
 
-export const DEFAULT_FILTERS: Filters = { tiers: TIERS, area: null, priceFactor: null, partnerOnly: false, activeOnly: false };
+export const DEFAULT_FILTERS: Filters = { tiers: TIERS, area: null, priceFactor: null, partnerOnly: false, activeOnly: false, completeOnly: false };
 
 /** Filters as URL params; `null` removes one. The inverse of parseFilters. */
 export const filterParams = (f: Filters): Record<(typeof FILTER_PARAMS)[number], string | null> => ({
@@ -67,32 +80,46 @@ export const filterParams = (f: Filters): Record<(typeof FILTER_PARAMS)[number],
   harga: PRICE_OPTIONS.find((o) => o.factor === f.priceFactor)?.value || null,
   pks: f.partnerOnly ? "1" : null,
   aktif: f.activeOnly ? "1" : null,
+  lengkap: f.completeOnly ? "1" : null,
 });
 
 /** What the filters look at in a match: small and serializable, so the filter panel can count results as you choose. */
 export type FilterFacts = {
   tier: Tier;
   locality: Locality;
-  priceMid: number;
-  medianPrice: number;
+  /** Price against the median, 1 at it; null when it can't be compared. */
+  priceRatio: number | null;
   partner: boolean;
   expired: boolean;
+  /** Covers every step of an accident case; undefined outside one. */
+  complete?: boolean;
 };
 
 export const factsOf = (m: TreatmentMatch): FilterFacts => ({
   tier: m.tier,
   locality: m.locality,
-  priceMid: m.priceMid,
-  medianPrice: m.medianPrice,
+  priceRatio: m.priceMid / m.medianPrice,
   partner: m.summary.hospital.partner,
   expired: m.summary.dataExpired,
+});
+
+/** A case spans many tindakan, so its price is the hospital's prices against the others' overall. */
+export const caseFactsOf = (m: CaseMatch): FilterFacts => ({
+  tier: m.tier,
+  locality: m.locality,
+  priceRatio: m.summary.hospital.priceIndex?.ratio ?? null,
+  partner: m.summary.hospital.partner,
+  expired: m.summary.dataExpired,
+  complete: m.covered === m.steps.length,
 });
 
 export const matchesFilters = (x: FilterFacts, f: Filters) =>
   f.tiers.includes(x.tier) &&
   (f.area === null || LOCALITY_RANK[x.locality] <= LOCALITY_RANK[f.area]) &&
-  (f.priceFactor === null || x.priceMid <= x.medianPrice * f.priceFactor) &&
+  (f.priceFactor === null || (x.priceRatio !== null && x.priceRatio <= f.priceFactor)) &&
   (!f.partnerOnly || x.partner) &&
-  (!f.activeOnly || !x.expired);
+  (!f.activeOnly || !x.expired) &&
+  (!f.completeOnly || x.complete !== false);
 
-export const applyFilters = (list: TreatmentMatch[], f: Filters) => list.filter((m) => matchesFilters(factsOf(m), f));
+export const applyFilters = <T>(list: T[], f: Filters, facts: (item: T) => FilterFacts) =>
+  list.filter((item) => matchesFilters(facts(item), f));
