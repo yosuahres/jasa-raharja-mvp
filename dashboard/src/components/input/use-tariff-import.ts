@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CategoryCounts, Detection, DetectedProfile, DocumentHospital } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
 import { TARIFF_BUCKET } from "@/lib/supabase/env";
+import { uploadResumable } from "@/lib/supabase/upload";
 
 // How often to ask for extraction progress while the worker runs.
 const POLL_MS = 2000;
@@ -140,8 +141,9 @@ export function useTariffImport(initialBookId: string | null) {
       const supabase = createClient();
       try {
         const path = `${crypto.randomUUID()}.pdf`;
-        const upload = await supabase.storage.from(TARIFF_BUCKET).upload(path, file, { contentType: "application/pdf" });
-        if (upload.error) throw new Error(`Upload gagal: ${upload.error.message}`);
+        await uploadResumable(TARIFF_BUCKET, path, file).catch((error) => {
+          throw new Error(`Upload gagal: ${errorText(error)}`);
+        });
 
         const { data, error } = await supabase
           .from("tariff_books")
