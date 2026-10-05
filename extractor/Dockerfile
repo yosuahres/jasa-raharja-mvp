@@ -17,4 +17,7 @@ COPY app/ ./app/
 RUN useradd --system --uid 10001 --no-create-home worker
 USER worker
 
+# The dashboard's wake call (app/wake.py).
+EXPOSE 8080
+
 CMD ["python", "-m", "app.worker"]

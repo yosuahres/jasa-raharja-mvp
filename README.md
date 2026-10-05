@@ -63,7 +63,11 @@ Both services run on the majorsales VPS beside the `majorsales-binapatria` stack
 Traefik and Watchtower on the external `project-network`. `docker-compose.yml` here starts only the
 dashboard and the worker: Traefik serves the dashboard at `JR_DOMAIN` (default
 `jasaraharja.majorsaleshub.com`, under the existing wildcard) with its `myresolver` certificate and
-`crowdsec` middleware. The worker has no port; it polls Supabase.
+`crowdsec` middleware. The worker is woken over HTTPS at `JR_EXTRACTOR_DOMAIN` (default
+`jasaraharja-extractor.majorsaleshub.com`): the dashboard calls `POST /wake` with `EXTRACTOR_SECRET` when it
+queues a book (`extractor/app/wake.py`). It still polls Supabase every 60 seconds, so a book queued while the
+endpoint is unreachable is picked up anyway. Set the same `EXTRACTOR_SECRET` in `extractor/.env` and, with
+`EXTRACTOR_URL`, wherever the dashboard runs (Vercel → Settings → Environment Variables).
 
 Every push to `main` runs the extractor tests and the dashboard lint, then builds
 `ghcr.io/yosuahres/jasa-raharja-extractor:prod` and `ghcr.io/yosuahres/jasa-raharja-dashboard:prod`

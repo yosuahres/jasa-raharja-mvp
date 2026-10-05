@@ -18,7 +18,6 @@ import {
   X,
 } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Catalog, Hospital } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
 
@@ -46,11 +45,11 @@ const SPECIALTY_ICON: Record<string, LucideIcon> = {
   emergensi: Siren,
 };
 
-type Item = { id: string; name: string; icon: LucideIcon; present: boolean; value?: string; roundTheClock?: boolean };
+export type ResourceItem = { id: string; name: string; icon: LucideIcon; present: boolean; value?: string; roundTheClock?: boolean };
 
-/** Facilities and specialists as two compact lists; what's missing stays listed, greyed out, so gaps are easy to spot. */
-export function Resources({ hospital, catalog }: { hospital: Hospital; catalog: Catalog }) {
-  const facilities: Item[] = catalog.facilities.map((f) => {
+/** Every facility the system recognises, marked with whether this hospital has it. */
+export const facilityItems = (hospital: Hospital, catalog: Catalog): ResourceItem[] =>
+  catalog.facilities.map((f) => {
     const item = hospital.facilities.find((x) => x.facilityId === f.id);
     return {
       id: f.id,
@@ -61,7 +60,10 @@ export function Resources({ hospital, catalog }: { hospital: Hospital; catalog: 
       roundTheClock: item?.available24h ?? undefined,
     };
   });
-  const staff: Item[] = catalog.specialties.map((s) => {
+
+/** Every specialty the system recognises, marked with whether this hospital has it. */
+export const staffItems = (hospital: Hospital, catalog: Catalog): ResourceItem[] =>
+  catalog.specialties.map((s) => {
     const member = hospital.staff.find((x) => x.specialtyId === s.id);
     return {
       id: s.id,
@@ -73,44 +75,18 @@ export function Resources({ hospital, catalog }: { hospital: Hospital; catalog: 
     };
   });
 
+/** Facilities or specialists as a compact list; what's missing stays listed, greyed out, so gaps are easy to spot. */
+export function ResourceList({ items, roundTheClockLabel }: { items: ResourceItem[]; roundTheClockLabel: string }) {
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-2">
-      <ResourceList
-        title="Fasilitas"
-        items={facilities}
-        roundTheClockLabel="24 jam"
-      />
-      <ResourceList title="Tenaga medis" items={staff} roundTheClockLabel="On-call 24 jam" />
-    </div>
+    <ul className="divide-y text-sm">
+      {items.map((item) => (
+        <ResourceRow key={item.id} item={item} roundTheClockLabel={roundTheClockLabel} />
+      ))}
+    </ul>
   );
 }
 
-function ResourceList({
-  title,
-  items,
-  roundTheClockLabel,
-}: {
-  title: string;
-  items: Item[];
-  roundTheClockLabel: string;
-}) {
-  return (
-    <Card className="pb-2">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ul className="divide-y text-sm">
-          {items.map((item) => (
-            <ResourceRow key={item.id} item={item} roundTheClockLabel={roundTheClockLabel} />
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ResourceRow({ item, roundTheClockLabel }: { item: Item; roundTheClockLabel: string }) {
+function ResourceRow({ item, roundTheClockLabel }: { item: ResourceItem; roundTheClockLabel: string }) {
   const Icon = item.present ? item.icon : X;
 
   return (

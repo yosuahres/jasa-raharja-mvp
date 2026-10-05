@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { PageHeader } from "@/components/page-header";
 import { RatingPill } from "@/components/rating";
 import { TipeBadge } from "@/components/tier-badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -11,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { UrlSearchInput } from "@/components/url-search-input";
 import { UrlSelect } from "@/components/url-select";
-import { CARE_CATEGORIES, categoryLabel } from "@/lib/categories";
 import { getBookRowStats, getDataset, searchLines } from "@/lib/data/queries";
 import type { Dataset, Hospital } from "@/lib/data/types";
 import { formatDate, formatJuta, formatPercent, formatRange, joinFacts } from "@/lib/format";
@@ -83,8 +81,8 @@ export default async function ComparePage({ searchParams }: PageProps<"/bandingk
   );
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-8">
-      <PageHeader title="Bandingkan Rumah Sakit" />
+    // No title of its own: the app header names the page.
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-8">
 
       <div className="mb-6 grid gap-3">
         <div className="sm:max-w-md">
@@ -159,7 +157,7 @@ function PickHospitals({ ranked, ids, query }: { ranked: HospitalSummary[]; ids:
                   scroll={false}
                   aria-current={selected ? "true" : undefined}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors hover:bg-muted/60",
+                    "flex h-full items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors hover:bg-muted/60",
                     selected && "border-foreground/40 bg-muted/60",
                   )}
                 >
@@ -174,7 +172,7 @@ function PickHospitals({ ranked, ids, query }: { ranked: HospitalSummary[]; ids:
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{s.hospital.name}</span>
-                    <span className="block text-xs text-muted-foreground">{s.hospital.city}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{s.hospital.city || "—"}</span>
                   </span>
                   {s.tipe ? <TipeBadge tipe={s.tipe} /> : <span className="text-xs text-muted-foreground">Tanpa tarif</span>}
                 </Link>
@@ -273,7 +271,7 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
             </tr>
           </thead>
           <TableBody>
-            {query ? (
+            {query && (
               <>
                 <Section title={`Tarif "${query}"`} />
                 <CompareRow
@@ -313,45 +311,9 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
                   }
                 />
               </>
-            ) : (
-              <>
-                <Section title="Layanan" />
-                {CARE_CATEGORIES.map((category) => {
-                  const counts = columns.map((c) => c.hospital.tariffBook?.categories[category] ?? 0);
-                  return (
-                    <CompareRow
-                      key={category}
-                      label={categoryLabel(category)}
-                      columns={columns}
-                      best={bestOf(counts, "high")}
-                      render={(_, i) =>
-                        counts[i] > 0 ? <span className="tabular-nums">{counts[i].toLocaleString("id-ID")} baris tarif</span> : <Muted>Tidak ada</Muted>
-                      }
-                    />
-                  );
-                })}
-              </>
             )}
 
             <Section title="Penilaian" />
-            <CompareRow
-              label="Peringkat"
-              columns={columns}
-              best={bestOf(
-                columns.map((c) => (c.summary.placing ? -c.summary.placing.rank : null)),
-                "high",
-              )}
-              render={(c) =>
-                c.summary.placing ? (
-                  <span className="tabular-nums">
-                    <span className="text-lg font-semibold">{c.summary.placing.rank}</span>
-                    <span className="text-muted-foreground"> dari {c.summary.placing.of}</span>
-                  </span>
-                ) : (
-                  <Muted>—</Muted>
-                )
-              }
-            />
             <CompareRow
               label="Harga"
               hint="Dibanding RS lain, pada layanan yang sama"
@@ -466,13 +428,8 @@ function HospitalHeader({ column: c, ids, query }: { column: Column; ids: string
           <X className="size-4" />
         </Link>
       </div>
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2">
         {c.summary.tipe ? <TipeBadge tipe={c.summary.tipe} /> : <span className="text-xs font-normal text-muted-foreground">Tanpa tarif</span>}
-        {c.summary.placing && (
-          <span className="text-xs font-normal text-muted-foreground tabular-nums">
-            Peringkat <span className="text-sm font-semibold text-foreground">{c.summary.placing.rank}</span> dari {c.summary.placing.of}
-          </span>
-        )}
       </div>
     </TableHead>
   );

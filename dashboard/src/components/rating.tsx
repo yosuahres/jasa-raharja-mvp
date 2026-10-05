@@ -27,28 +27,3 @@ export function RatingPill({ level, className }: { level: PriceLevel | ServiceLe
     </span>
   );
 }
-
-/** How the ratings are made, in three lines, for anyone wondering why a hospital sits where it does. */
-export function MethodNote({ className }: { className?: string }) {
-  return (
-    <details className={cn("group text-xs text-muted-foreground", className)}>
-      <summary className="w-fit cursor-pointer list-none underline-offset-4 hover:text-foreground hover:underline [&::-webkit-details-marker]:hidden">
-        Cara penilaian
-      </summary>
-      <ul className="mt-2 grid max-w-2xl list-disc gap-1 pl-4 text-pretty">
-        <li>
-          <span className="font-medium text-foreground">Harga</span>: tarif rumah sakit dibanding rumah sakit lain pada layanan yang namanya
-          sama di dokumen. Sepertiga termurah Murah, tengah Wajar, termahal Mahal.
-        </li>
-        <li>
-          <span className="font-medium text-foreground">Layanan</span>: jenis layanan, fasilitas, dan tenaga medis yang terlihat di dokumen.
-          Sepertiga terlengkap Lengkap, tengah Cukup, sisanya Terbatas.
-        </li>
-        <li>
-          <span className="font-medium text-foreground">Tipe</span>: peringkat dari Harga dan Layanan, sama bobotnya. Seperempat teratas Tipe A,
-          lalu Tipe B, Tipe C, dan Tipe D.
-        </li>
-      </ul>
-    </details>
-  );
-}

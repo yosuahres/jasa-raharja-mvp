@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { toolbarButton } from "@/components/data-table/styles";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
@@ -9,7 +10,8 @@ type Option = { value: string; label: string };
 
 /**
  * A select whose value lives in the URL, so filtered views can be shared.
- * `inline` puts the label inside the control, for toolbars (e.g. sorting).
+ * `inline` puts the label inside the control, for toolbars (e.g. sorting). `toolbar` is the outlined
+ * button of a full page's toolbar (`data-table/styles.ts`), tinted while it holds a choice.
  */
 export function UrlSelect({
   param,
@@ -22,7 +24,7 @@ export function UrlSelect({
   label: string;
   options: Option[];
   value: string;
-  variant?: "default" | "inline";
+  variant?: "default" | "inline" | "toolbar";
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -39,7 +41,7 @@ export function UrlSelect({
     <Select items={options} value={value} onValueChange={onChange}>
       <SelectTrigger
         aria-label={label}
-        className={cn(
+        className={variant === "toolbar" ? cn(toolbarButton(Boolean(value)), "data-[size=default]:h-8 w-auto bg-transparent dark:bg-transparent") : cn(
           "h-9 cursor-pointer rounded-lg data-[size=default]:h-9 border-0 bg-muted text-sm font-medium text-foreground hover:bg-muted/70 dark:bg-muted dark:hover:bg-muted/70",
           variant === "inline" ? "pr-2.5 pl-3" : "w-full pl-3",
         )}
@@ -57,7 +59,7 @@ export function UrlSelect({
     </Select>
   );
 
-  if (variant === "inline") return control;
+  if (variant !== "default") return control;
 
   return (
     <div className="grid gap-1.5 text-xs font-medium text-muted-foreground">

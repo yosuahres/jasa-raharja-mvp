@@ -1,16 +1,29 @@
-import { FileText, Loader2, Upload } from "lucide-react";
+"use client";
 
+import { FileText, Loader2, RotateCw, Upload } from "lucide-react";
+import { useState, useTransition } from "react";
+
+import { discardImport, retryExtraction } from "@/app/(dashboard)/input/actions";
 import { Button } from "@/components/ui/button";
 import { Progress, ProgressLabel } from "@/components/ui/progress";
 
 import { Notice, StepHeader } from "./step-layout";
 import type { ImportBook } from "./use-tariff-import";
 
-/** Step 2: the extractor worker's progress on one upload, as it reports pages read. */
-export function ExtractionProgress({ book }: { book: ImportBook }) {
+/** Step 2: the extractor worker's progress on one upload, as it reports pages read. Cancelling drops the upload. */
+export function ExtractionProgress({ book, onCancelled }: { book: ImportBook; onCancelled: () => void }) {
   const queued = book.status === "queued";
   const total = book.pagesTotal ?? 0;
   const share = total ? Math.min(book.pagesDone / total, 1) : 0;
+  const [cancelling, startTransition] = useTransition();
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  const cancel = () =>
+    startTransition(async () => {
+      const result = await discardImport(book.id);
+      setCancelError(result.error);
+      if (!result.error) onCancelled();
+    });
 
   return (
     <>
@@ -23,13 +36,24 @@ export function ExtractionProgress({ book }: { book: ImportBook }) {
             : "Halaman ini boleh ditutup; hasilnya bisa dibuka lagi dari halaman Upload Dokumen."
         }
         actions={
-          <Button size="sm" disabled>
-            <Loader2 className="animate-spin motion-reduce:animate-none" />
-            Lanjutkan
-          </Button>
+          <>
+            <Button size="sm" variant="ghost" disabled={cancelling} onClick={cancel}>
+              {cancelling && <Loader2 className="animate-spin motion-reduce:animate-none" />}
+              Batal
+            </Button>
+            <Button size="sm" disabled>
+              <Loader2 className="animate-spin motion-reduce:animate-none" />
+              Lanjutkan
+            </Button>
+          </>
         }
       />
 
+      {cancelError && (
+        <div className="mb-4">
+          <Notice tone="error">{cancelError}</Notice>
+        </div>
+      )}
       <div className="grid gap-6 rounded-xl border bg-background p-6">
         <FileCard name={book.fileName} />
         <Progress
@@ -50,24 +74,52 @@ export function ExtractionProgress({ book }: { book: ImportBook }) {
   );
 }
 
-/** Step 2 when the document couldn't be read. */
-export function ExtractionFailed({ book, error, onReset }: { book: ImportBook | null; error: string; onReset: () => void }) {
+/** Step 2 when the document couldn't be read: read it again, or start over with another. */
+export function ExtractionFailed({
+  book,
+  error,
+  onRetried,
+  onReset,
+}: {
+  book: ImportBook | null;
+  error: string;
+  /** Reloads the upload; resolves once it shows its new state. */
+  onRetried: () => Promise<void>;
+  onReset: () => void;
+}) {
+  const [retrying, startTransition] = useTransition();
+  const [retryError, setRetryError] = useState<string | null>(null);
+
+  // An upload that failed to load is just loaded again; one the extractor failed on is queued again.
+  const retry = () =>
+    startTransition(async () => {
+      const result = book ? await retryExtraction(book.id) : { error: null };
+      setRetryError(result.error);
+      if (!result.error) await onRetried();
+    });
+
   return (
     <>
       <StepHeader
         title="Dokumen tidak terbaca"
         status={{ label: "Gagal", tone: "error" }}
-        description="Coba unggah dokumen lain."
+        description="Coba baca ulang, atau unggah dokumen lain."
         actions={
-          <Button size="sm" onClick={onReset}>
-            <Upload />
-            Unggah dokumen lain
-          </Button>
+          <>
+            <Button size="sm" variant="outline" disabled={retrying} onClick={onReset}>
+              <Upload />
+              Unggah dokumen lain
+            </Button>
+            <Button size="sm" disabled={retrying} onClick={retry}>
+              <RotateCw className={retrying ? "animate-spin motion-reduce:animate-none" : undefined} />
+              Coba lagi
+            </Button>
+          </>
         }
       />
       <div className="grid gap-4">
         {book && <FileCard name={book.fileName} />}
-        <Notice tone="error">{error}</Notice>
+        <Notice tone="error">{retryError ?? error}</Notice>
       </div>
     </>
   );

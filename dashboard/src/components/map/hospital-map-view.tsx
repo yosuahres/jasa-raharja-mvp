@@ -21,13 +21,14 @@ export function HospitalMapView({ pins, unplaced }: { pins: MapPin[]; unplaced: 
   const [focus, setFocus] = useState<MapFocus | null>(null);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+    // Fills its full-page box: the map takes the height, the list scrolls beside it.
+    <div className="grid gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_18rem]">
       {/* `isolate` keeps Leaflet's high z-index panes under the app's drawer and dialogs. */}
-      <Card className="isolate h-[min(70svh,44rem)] min-h-80 overflow-hidden py-0">
-        <HospitalMap pins={pins} focus={focus} />
+      <Card className="isolate h-[60svh] min-h-80 overflow-hidden py-0 lg:h-full">
+        <HospitalMap pins={pins} focus={focus} onPick={(pin) => setFocus({ pin })} />
       </Card>
 
-      <aside className="grid content-start gap-4 lg:max-h-[min(70svh,44rem)] lg:overflow-y-auto">
+      <aside className="grid content-start gap-4 lg:min-h-0 lg:overflow-y-auto">
         {pins.length > 0 && (
           <ul className="grid gap-0.5">
             {pins.map((pin) => (

@@ -63,7 +63,7 @@ export function UploadForm({
       <StepHeader
         title="Pilih dokumen"
         status={file && !shownError ? { label: "Siap", tone: "success" } : undefined}
-        description="PDF, maksimal 50 MB. Data rumah sakit dan tarifnya dibaca otomatis."
+        description="PDF, maksimal 50 MB."
         actions={
           <Button size="sm" disabled={!file || uploading} onClick={() => file && onStart(file)}>
             {uploading && <Loader2 className="animate-spin motion-reduce:animate-none" />}

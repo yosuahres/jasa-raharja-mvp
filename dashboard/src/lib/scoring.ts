@@ -45,7 +45,14 @@ export const LOCALITY_RANK: Record<Locality, number> = { kota: 0, provinsi: 1, l
 
 const LOCALITY_SCORE: Record<Locality, number> = { kota: 100, provinsi: 50, lain: 0 };
 
+/** "Semua lokasi": no city chosen, so distance ranks no hospital above another. */
+export const ALL_LOCATIONS: Origin = { city: "", province: "" };
+
+/** `lokasi` in the URL for "Semua lokasi". */
+export const ALL_LOCATIONS_PARAM = "semua";
+
 export const localityOf = (hospital: Hospital, origin: Origin): Locality => {
+  if (!origin.city) return "kota";
   if (hospital.city && hospital.city === origin.city) return "kota";
   return hospital.province && hospital.province === origin.province ? "provinsi" : "lain";
 };
@@ -252,7 +259,7 @@ export const rankForTreatment = (lines: SearchedLine[], origin: Origin, data: Da
       const strengths: string[] = [];
       const notes: string[] = [];
       if (savingVsMedian >= 0.1) strengths.push(`Tarif ${Math.round(savingVsMedian * 100)}% di bawah median`);
-      if (locality === "kota") strengths.push(`Di ${origin.city}`);
+      if (locality === "kota" && origin.city) strengths.push(`Di ${origin.city}`);
       if (hospital.facilities.some((f) => f.facilityId === "igd" && f.available24h)) strengths.push("IGD 24 jam");
       if (savingVsMedian <= -0.15) notes.push(`Tarif ${Math.round(-savingVsMedian * 100)}% di atas median`);
       if (locality === "lain") notes.push("Di luar provinsi");

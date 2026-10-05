@@ -4,13 +4,13 @@ import { after } from "next/server";
 import { Suspense } from "react";
 
 import { HospitalMapView } from "@/components/map/hospital-map-view";
-import { PageHero } from "@/components/page-hero";
+import { FULL_PAGE, TOOLBAR } from "@/components/data-table/styles";
+import { Skeleton } from "@/components/ui/skeleton";
 import { UrlSelect } from "@/components/url-select";
 import { getDataset } from "@/lib/data/queries";
 import { geocodeMissing } from "@/lib/geocode";
 import { allSummaries } from "@/lib/scoring";
 import { createClient } from "@/lib/supabase/server";
-import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Peta Rumah Sakit",
@@ -50,33 +50,30 @@ export default async function MapPage({ searchParams }: PageProps<"/peta">) {
   );
   const unplaced = shown.filter((s) => !s.hospital.location).map(({ hospital: h }) => ({ id: h.id, name: h.name, city: h.city }));
 
+  // Full page, like Rumah Sakit: the app header names it, a toolbar, then the map.
   return (
-    <>
-      <PageHero title="Peta Rumah Sakit">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-[12rem_12rem]">
-          <Suspense fallback={<FieldPlaceholder label="Kota" />}>
-            <UrlSelect
-              param="kota"
-              label="Kota"
-              value={city}
-              options={[{ value: "", label: "Semua kota" }, ...cities.map((c) => ({ value: c, label: c }))]}
-            />
-          </Suspense>
-          <Suspense fallback={<FieldPlaceholder label="Tipe" />}>
-            <UrlSelect param="tipe" label="Tipe" value={tipe} options={TIPE_OPTIONS} />
-          </Suspense>
-        </div>
-      </PageHero>
-
-      <div className="mx-auto w-full max-w-7xl px-4 pt-4 pb-7 sm:px-8">
+    <div className={FULL_PAGE}>
+      <div className={TOOLBAR}>
+        <Suspense fallback={<Skeleton className="h-8 w-28 rounded-md" />}>
+          <UrlSelect
+            param="kota"
+            label="Kota"
+            variant="toolbar"
+            value={city}
+            options={[{ value: "", label: "Semua kota" }, ...cities.map((c) => ({ value: c, label: c }))]}
+          />
+        </Suspense>
+        <Suspense fallback={<Skeleton className="h-8 w-28 rounded-md" />}>
+          <UrlSelect param="tipe" label="Tipe" variant="toolbar" value={tipe} options={TIPE_OPTIONS} />
+        </Suspense>
         {filtered && (
-          <div className="mb-2 flex justify-end text-xs">
-            <Link href="/peta" replace scroll={false} className="font-medium text-foreground underline-offset-4 hover:underline">
-              Hapus filter
-            </Link>
-          </div>
+          <Link href="/peta" replace scroll={false} className="px-1 text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+            Hapus filter
+          </Link>
         )}
+      </div>
 
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {summaries.length === 0 ? (
           <p className="py-14 text-center font-medium">Belum ada data</p>
         ) : shown.length === 0 ? (
@@ -85,15 +82,6 @@ export default async function MapPage({ searchParams }: PageProps<"/peta">) {
           <HospitalMapView pins={pins} unplaced={unplaced} />
         )}
       </div>
-    </>
-  );
-}
-
-function FieldPlaceholder({ label, className }: { label: string; className?: string }) {
-  return (
-    <div className={cn("grid gap-1.5 text-xs font-medium text-muted-foreground", className)}>
-      {label}
-      <div className="h-9 rounded-lg bg-muted" />
     </div>
   );
 }

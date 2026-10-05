@@ -1,6 +1,7 @@
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { startExtraction } from "@/app/(dashboard)/input/actions";
 import type { CategoryCounts, Detection, DetectedProfile, DocumentHospital } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
 import { TARIFF_BUCKET } from "@/lib/supabase/env";
@@ -36,7 +37,8 @@ export type ImportState =
   | { phase: "loading" }
   | { phase: "uploading" }
   | { phase: "processing"; book: ImportBook }
-  | { phase: "failed"; book: ImportBook | null; error: string }
+  /** `book` is null when the upload itself couldn't be loaded. */
+  | { phase: "failed"; bookId: string; book: ImportBook | null; error: string }
   | ({ phase: "preview" } & ImportPreview);
 
 const BOOK_SELECT =
@@ -101,6 +103,8 @@ export function useTariffImport(initialBookId: string | null) {
   const router = useRouter();
   const pathname = usePathname();
   const [state, setState] = useState<ImportState>(initialBookId ? { phase: "loading" } : { phase: "idle" });
+  // The upload on screen; a load still in flight for another (or after a reset) is dropped.
+  const shownId = useRef(initialBookId);
 
   const setBookParam = useCallback(
     (id: string | null) => router.replace(id ? `${pathname}?tarif=${id}` : pathname, { scroll: false }),
@@ -110,15 +114,21 @@ export function useTariffImport(initialBookId: string | null) {
   /** Move to whichever phase the book's status calls for. */
   const enter = useCallback(async (book: ImportBook) => {
     if (book.status === "queued" || book.status === "extracting") setState({ phase: "processing", book });
-    else if (book.status === "failed") setState({ phase: "failed", book, error: book.error ?? "Ekstraksi gagal." });
+    else if (book.status === "failed") setState({ phase: "failed", bookId: book.id, book, error: book.error ?? "Ekstraksi gagal." });
     else setState({ phase: "preview", ...(await loadPreview(book)) });
   }, []);
 
   const open = useCallback(
-    (id: string) =>
-      loadBook(id)
-        .then(enter)
-        .catch((error) => setState({ phase: "failed", book: null, error: errorText(error) })),
+    (id: string) => {
+      shownId.current = id;
+      return loadBook(id)
+        .then(async (book) => {
+          if (shownId.current === id) await enter(book);
+        })
+        .catch((error) => {
+          if (shownId.current === id) setState({ phase: "failed", bookId: id, book: null, error: errorText(error) });
+        });
+    },
     [enter],
   );
 
@@ -151,8 +161,11 @@ export function useTariffImport(initialBookId: string | null) {
           .select(BOOK_SELECT)
           .single<BookRow>();
         if (error) throw new Error(error.message);
+        // Not awaited: the book is queued either way, and the worker's poll is the fallback.
+        void startExtraction();
 
         const book = toBook(data);
+        shownId.current = book.id;
         setState({ phase: "processing", book });
         setBookParam(book.id);
       } catch (error) {
@@ -165,6 +178,7 @@ export function useTariffImport(initialBookId: string | null) {
 
   /** Back to an empty upload. */
   const reset = useCallback(() => {
+    shownId.current = null;
     setState({ phase: "idle" });
     setBookParam(null);
     router.refresh();

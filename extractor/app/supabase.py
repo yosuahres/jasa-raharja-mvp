@@ -6,6 +6,8 @@ so it belongs on the machine running the worker and nowhere else.
 
 import json
 import os
+import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -14,6 +16,8 @@ from pathlib import Path
 TIMEOUT_SECONDS = 120
 # PostgREST returns at most this many rows per request.
 PAGE_SIZE = 1000
+# Seconds to wait before each retry of a request that never left the machine.
+RETRY_DELAYS = (1, 3, 10, 30)
 
 
 class SupabaseError(Exception):
@@ -98,12 +102,20 @@ class Supabase:
         return json.loads(payload) if payload else []
 
     def _send(self, request: urllib.request.Request) -> bytes:
-        try:
-            with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
-                return response.read()
-        except urllib.error.HTTPError as error:
-            detail = error.read().decode(errors="replace")
-            raise SupabaseError(f"{request.get_method()} {request.full_url.split('?')[0]} → {error.code}: {detail}") from error
+        for delay in (*RETRY_DELAYS, None):
+            try:
+                with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+                    return response.read()
+            except urllib.error.HTTPError as error:
+                detail = error.read().decode(errors="replace")
+                raise SupabaseError(f"{request.get_method()} {request.full_url.split('?')[0]} → {error.code}: {detail}") from error
+            except urllib.error.URLError as error:
+                # A failed DNS lookup or refused connection means nothing reached Supabase, so even
+                # an insert is safe to send again. One blip shouldn't fail a 3,000-page book.
+                if delay is None or not isinstance(error.reason, (socket.gaierror, ConnectionRefusedError)):
+                    raise
+                time.sleep(delay)
+        raise AssertionError("unreachable")
 
 
 def _load_dotenv(path: Path) -> None:

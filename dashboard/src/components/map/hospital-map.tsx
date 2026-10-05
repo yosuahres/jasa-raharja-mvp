@@ -2,9 +2,8 @@
 
 import "leaflet/dist/leaflet.css";
 
-import type { CircleMarker as LeafletCircleMarker } from "leaflet";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { AttributionControl, CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
 
 import { TipeBadge } from "@/components/tier-badge";
@@ -12,11 +11,13 @@ import type { Tipe } from "@/lib/data/types";
 
 export type MapPin = { id: string; name: string; city: string; tipe: Tipe | null; lat: number; lng: number };
 
-/** A pick from the list. A new object per click, so picking the same hospital again flies back to it. */
+/** A pick from the list or the map. A new object per click, so picking the same hospital again flies back to it. */
 export type MapFocus = { pin: MapPin };
 
 // The whole country, for a map with nothing on it yet.
 const INDONESIA = { center: [-2.5, 118] as [number, number], zoom: 5 };
+// Close enough to see the hospital's own street.
+const FOCUS_ZOOM = 17;
 
 // Leaflet writes colors as SVG attributes, which can't read CSS variables; classes can, and win over them.
 const PIN_STYLE: Record<Tipe | "none", string> = {
@@ -41,21 +42,17 @@ function FitPins({ pins }: { pins: MapPin[] }) {
   return null;
 }
 
-/** Flies to the hospital picked in the list and opens its popup. */
-function FocusPin({ focus, markers }: { focus: MapFocus | null; markers: React.RefObject<Map<string, LeafletCircleMarker>> }) {
+/** Zooms in on the picked hospital. */
+function FocusPin({ focus }: { focus: MapFocus | null }) {
   const map = useMap();
   useEffect(() => {
     if (!focus) return;
-    const { pin } = focus;
-    map.flyTo([pin.lat, pin.lng], Math.max(map.getZoom(), 14), { duration: 0.6 });
-    markers.current.get(pin.id)?.openPopup();
-  }, [map, focus, markers]);
+    map.flyTo([focus.pin.lat, focus.pin.lng], Math.max(map.getZoom(), FOCUS_ZOOM), { duration: 0.6 });
+  }, [map, focus]);
   return null;
 }
 
-export function HospitalMap({ pins, focus }: { pins: MapPin[]; focus: MapFocus | null }) {
-  const markers = useRef(new Map<string, LeafletCircleMarker>());
-
+export function HospitalMap({ pins, focus, onPick }: { pins: MapPin[]; focus: MapFocus | null; onPick: (pin: MapPin) => void }) {
   return (
     <MapContainer
       center={INDONESIA.center}
@@ -75,10 +72,7 @@ export function HospitalMap({ pins, focus }: { pins: MapPin[]; focus: MapFocus |
           center={[pin.lat, pin.lng]}
           radius={8}
           pathOptions={{ className: PIN_STYLE[pin.tipe ?? "none"], weight: 2, fillOpacity: 0.95 }}
-          ref={(marker) => {
-            if (marker) markers.current.set(pin.id, marker);
-            else markers.current.delete(pin.id);
-          }}
+          eventHandlers={{ click: () => onPick(pin) }}
         >
           <Popup>
             <div className="grid gap-1.5">
@@ -95,7 +89,7 @@ export function HospitalMap({ pins, focus }: { pins: MapPin[]; focus: MapFocus |
         </CircleMarker>
       ))}
       <FitPins pins={pins} />
-      <FocusPin focus={focus} markers={markers} />
+      <FocusPin focus={focus} />
     </MapContainer>
   );
 }

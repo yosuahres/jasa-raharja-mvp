@@ -9,8 +9,6 @@ export type AccidentStep = { label: string; keys: string[] };
 export type AccidentCase = {
   id: string;
   name: string;
-  /** What happened, in a line, as a claim officer would write it. */
-  description: string;
   steps: AccidentStep[];
 };
 
@@ -22,7 +20,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "cedera-kepala-berat",
     name: "Cedera kepala berat",
-    description: "Pengendara motor terlempar, tidak sadar, perdarahan di dalam kepala.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["ENDOTRAKEAL INTUBASI", "ET INTUBASI PASANG", "AIRWAI BREATING INTUBASI KEGAWATAN", "INFUS PASANG", "KATETER PASANG"] },
       { label: OPERASI, keys: ["KRANIOTOMI REGIO TRAUMA TREPANASI", "KRANIOTOMI TRAUMA TREPANASI VENTRIKULOSTOMI", "BRAIN EDH EPIDURAL EVAKUASI HEMORHAGE KRANIOTOMI"] },
@@ -32,7 +29,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "cedera-tulang-belakang",
     name: "Cedera tulang belakang",
-    description: "Jatuh dari motor dengan punggung terbentur, kedua kaki lemah.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["INFUS PASANG", "KATETER PASANG"] },
       { label: OPERASI, keys: ["FRAKTUR SPINE STABILISASI", "DISLOKASI FRAKTUR REDUKSI SPINE STABILISASI TERBUKA"] },
@@ -41,7 +37,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "trauma-dada",
     name: "Trauma dada",
-    description: "Dada membentur setang, sesak napas, darah di rongga dada.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["PASANG WSD", "KEST PASANG TUBE", "MINI PASANG WSD", "PLEURA PUNGSI"] },
       { label: OPERASI, keys: ["HEMATOTORAKS TORAKOTOMI", "FIKSASI FRAKTUR KOSTA"] },
@@ -51,7 +46,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "trauma-perut",
     name: "Trauma perut",
-    description: "Perut terbentur keras saat tabrakan, tanda perdarahan dalam.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["INFUS PASANG", "KATETER PASANG", "NGT PASANG", "NASOGASTRIK NGT PASANG TUBE"] },
       {
@@ -69,7 +63,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "patah-tulang-paha",
     name: "Patah tulang paha",
-    description: "Motor jatuh menimpa kaki, paha tidak bisa digerakkan.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["BIDAI PASANG SPALK", "INFUS PASANG", "PASANG SKIN TRAKSI", "SKELETAL TRAKSI", "PASANG SKELETAL TRAKSI"] },
       { label: OPERASI, keys: ["FEMUR FRAKTUR ORIF SHAFT", "FEMUR FIKSASI FRAKTUR INTERNAL NAIL", "DHS FEMUR FIKSASI FRAKTUR INTERNAL"] },
@@ -79,7 +72,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "patah-tulang-lengan",
     name: "Patah tulang lengan",
-    description: "Tertabrak saat menyeberang, lengan bawah bengkok dan bengkak.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["BIDAI PASANG SPALK", "ARM PASANG SLING", "FRAKTUR IMOBILISASI KAST PLASTER REPOSISI TERTUTUP"] },
       {
@@ -92,7 +84,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "patah-tulang-panggul",
     name: "Patah tulang panggul",
-    description: "Pejalan kaki tertabrak mobil, nyeri hebat di panggul.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["INFUS PASANG", "KATETER PASANG"] },
       { label: OPERASI, keys: ["EKSTERNAL FIKSASI PELVIS", "FIKSASI FRAKTUR INTERNAL PELVIS", "FIKSASI FRAKTUR PELVIS PLATE SKREW", "ASETABULUM FIKSASI FRAKTUR PELVIS"] },
@@ -102,7 +93,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "patah-tulang-terbuka",
     name: "Patah tulang terbuka",
-    description: "Tulang kaki menembus kulit setelah tabrakan, luka kotor.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["DEBRIDEMEN", "NEKROTOMI", "BIDAI PASANG SPALK"] },
       { label: OPERASI, keys: ["FIKSASI FRAKTUR INTERNAL TIBI", "AMPUTASI", "ABOVE AMPUTASI KNE"] },
@@ -112,7 +102,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "dislokasi-sendi",
     name: "Dislokasi sendi panggul",
-    description: "Lutut membentur dashboard, sendi panggul bergeser.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["DISLOKASI FEMUR REPOSISI", "DISLOKASI FEMUR REPOSISI SENDI"] },
       { label: OPERASI, keys: ["DISLOKASI REDUKSI TERBUKA"] },
@@ -121,7 +110,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "patah-tulang-wajah",
     name: "Patah tulang wajah dan rahang",
-    description: "Wajah menghantam dashboard mobil, rahang tidak bisa menutup.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["FRAKTUR NASAL REDUKSI TERTUTUP", "DISLOKASI MANDIBULA REPOSISI", "LUKSASI MANDIBULA REPOSISI"] },
       {
@@ -133,7 +121,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "luka-robek-wajah",
     name: "Luka robek di wajah",
-    description: "Wajah tergores aspal, luka robek luas dan kotor.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["DIWAJAH JAHIT LUKA", "DEBRIDEMEN", "ASING BENDA EKSTRAKSI"] },
       { label: OPERASI, keys: ["JAHIT KERUSAKAN LUKA WAJAH"] },
@@ -143,7 +130,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "luka-robek",
     name: "Luka robek ringan",
-    description: "Jatuh dari motor, luka robek di lengan dan lutut.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["JAHIT LUKA", "HEKTING LUKA", "HEKTING", "DEBRIDEMEN"] },
       { label: LANJUTAN, keys: ["LUKA RAWAT", "KOTOR LUKA RAWAT", "ANGKAT HEKTING", "ANGKAT JAHIT LUKA"] },
@@ -152,7 +138,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "cedera-tendon-tangan",
     name: "Cedera tendon tangan",
-    description: "Tangan tersayat pecahan kaca saat tabrakan, jari tidak bisa ditekuk.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["JAHIT LUKA", "HEKTING", "ASING BENDA EKSTRAKSI"] },
       { label: OPERASI, keys: ["REPARASI TENDON"] },
@@ -161,7 +146,6 @@ export const ACCIDENT_CASES: AccidentCase[] = [
   {
     id: "luka-bakar",
     name: "Luka bakar",
-    description: "Terkena api dan knalpot saat motor terbakar.",
     steps: [
       { label: GAWAT_DARURAT, keys: ["INFUS PASANG", "BAKAR KALI LUKA RAWAT", "BAKAR LUKA RAWAT TERMASUK"] },
       { label: OPERASI, keys: ["ESKAROTOMI", "BURN FASIOTOMI KOMPARTMEN SINDROME", "BAKAR DEBRIDEMEN FASEAKUT GRAFT LUKA SKIN"] },

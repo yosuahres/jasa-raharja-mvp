@@ -76,8 +76,10 @@ export function TariffImportFlow({
               Memuat…
             </p>
           )}
-          {state.phase === "processing" && <ExtractionProgress book={state.book} />}
-          {state.phase === "failed" && <ExtractionFailed book={state.book} error={state.error} onReset={reset} />}
+          {state.phase === "processing" && <ExtractionProgress book={state.book} onCancelled={reset} />}
+          {state.phase === "failed" && (
+            <ExtractionFailed book={state.book} error={state.error} onRetried={() => open(state.bookId)} onReset={reset} />
+          )}
           {state.phase === "preview" && (
             <ImportPreview preview={state} hospitals={hospitals} onReprocess={() => open(state.book.id)} onDiscarded={reset} />
           )}

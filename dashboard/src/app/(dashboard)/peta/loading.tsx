@@ -1,29 +1,22 @@
-import { PageHero } from "@/components/page-hero";
+import { FULL_PAGE, TOOLBAR } from "@/components/data-table/styles";
 import { Skeleton } from "@/components/ui/skeleton";
 
+/** The map page's shape while it loads: toolbar, then the map beside its list. */
 export default function Loading() {
   return (
-    <>
-      <PageHero title="Peta Rumah Sakit">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-[12rem_12rem]">
-          {[0, 1].map((i) => (
-            <div key={i}>
-              <Skeleton className="mb-1.5 h-3 w-10" />
-              <Skeleton className="h-9 rounded-lg" />
-            </div>
+    <div className={FULL_PAGE}>
+      <div className={TOOLBAR}>
+        <Skeleton className="h-8 w-28 rounded-md" />
+        <Skeleton className="h-8 w-28 rounded-md" />
+      </div>
+      <div className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <Skeleton className="h-full min-h-80 rounded-2xl" />
+        <div className="grid content-start gap-2">
+          {Array.from({ length: 6 }, (_, i) => (
+            <Skeleton key={i} className="h-10" />
           ))}
         </div>
-      </PageHero>
-      <div className="mx-auto w-full max-w-7xl px-4 pt-4 pb-7 sm:px-8">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <Skeleton className="h-[min(70svh,44rem)] min-h-80 rounded-2xl" />
-          <div className="grid content-start gap-2">
-            {Array.from({ length: 6 }, (_, i) => (
-              <Skeleton key={i} className="h-10" />
-            ))}
-          </div>
-        </div>
       </div>
-    </>
+    </div>
   );
 }

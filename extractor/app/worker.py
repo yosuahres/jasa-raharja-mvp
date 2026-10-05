@@ -1,6 +1,6 @@
 """Extract tariff books uploaded from the dashboard.
 
-    python -m app.worker            # keep polling for queued books
+    python -m app.worker            # wait for queued books (woken by the dashboard, else polling)
     python -m app.worker --once     # process what is queued, then stop
 
 Picks up books with status 'queued', downloads the PDF from Storage, finds which
@@ -15,7 +15,9 @@ On start it also names the tindakan again in documents read under older rules
 
 import argparse
 import logging
+import os
 import tempfile
+import threading
 import time
 import uuid
 from collections import Counter
@@ -24,7 +26,7 @@ from pathlib import Path
 
 import pymupdf
 
-from app import catalog
+from app import catalog, wake
 from app.book import extract_book
 from app.masterdata import detect
 from app.categories import classify
@@ -41,31 +43,45 @@ PRICE_BATCH = 2000
 PROGRESS_SECONDS = 2.0
 
 
+class Cancelled(Exception):
+    """The upload was discarded from the dashboard while it was being read."""
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Extract tariff books queued from the dashboard.")
     parser.add_argument("--once", action="store_true", help="Process the queue once, then exit.")
-    parser.add_argument("--interval", type=float, default=5.0, help="Seconds between queue checks.")
+    parser.add_argument(
+        "--interval", type=float, default=60.0, help="Seconds between queue checks when the dashboard doesn't wake the worker."
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
     client = Supabase.from_env()
+    woken = threading.Event()
+    secret = os.getenv("EXTRACTOR_SECRET")
+    if secret and not args.once:
+        wake.serve(int(os.getenv("EXTRACTOR_PORT", "8080")), secret, woken)
+    else:
+        log.info("no EXTRACTOR_SECRET, so no wake endpoint: polling every %gs", args.interval)
+
     sync_catalog(client)
     requeue_interrupted(client)
     rekey_treatments(client)
     log.info("waiting for tariff books")
     while True:
+        woken.clear()
         try:
             book = claim_next(client)
         except (SupabaseError, OSError) as error:  # a dropped connection shouldn't stop the worker
             log.warning("queue check failed, retrying: %s", error)
-            time.sleep(args.interval)
+            time.sleep(5)
             continue
         if book:
             process(client, book)
             continue
         if args.once:
             return
-        time.sleep(args.interval)
+        woken.wait(args.interval)
 
 
 def sync_catalog(client: Supabase) -> None:
@@ -127,7 +143,8 @@ def process(client: Supabase, book: dict) -> None:
             pdf.write_bytes(client.download(BUCKET, book["storage_path"]))
             with pymupdf.open(pdf) as doc:
                 total = doc.page_count
-            set_book(client, book_id, {"pages_total": total})
+            if not set_book(client, book_id, {"pages_total": total}):
+                raise Cancelled
 
             scan = prescan(pdf)
             hospitals = scan["hospitals"]
@@ -140,7 +157,9 @@ def process(client: Supabase, book: dict) -> None:
             def progress(stat: dict) -> None:
                 nonlocal last_report
                 if time.monotonic() - last_report >= PROGRESS_SECONDS:
-                    set_book(client, book_id, {"pages_done": stat["number"]})
+                    # The book row is gone once the dashboard discards it: stop reading.
+                    if not set_book(client, book_id, {"pages_done": stat["number"]}):
+                        raise Cancelled
                     last_report = time.monotonic()
 
             rows, stats = extract_book(
@@ -177,6 +196,8 @@ def process(client: Supabase, book: dict) -> None:
             },
         )
         log.info("done %s: %d rows, %d scanned pages", book_id, len(rows), len(scanned))
+    except Cancelled:
+        log.info("cancelled %s", book_id)
     except Exception as error:  # the dashboard shows the reason; the worker keeps going
         log.exception("failed %s", book_id)
         set_book(client, book_id, {"status": "failed", "error": str(error)[:1000]})
@@ -248,8 +269,9 @@ def to_db_rows(book_id: str, rows: list[dict], categories: list[str] | None = No
     return row_payload, price_payload
 
 
-def set_book(client: Supabase, book_id: str, values: dict) -> None:
-    client.update("tariff_books", {"id": f"eq.{book_id}"}, values)
+def set_book(client: Supabase, book_id: str, values: dict) -> list[dict]:
+    """The updated book, as a one-row list; empty once the book was discarded."""
+    return client.update("tariff_books", {"id": f"eq.{book_id}"}, values)
 
 
 if __name__ == "__main__":

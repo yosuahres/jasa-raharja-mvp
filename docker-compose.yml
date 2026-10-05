@@ -21,8 +21,22 @@ services:
     init: true
     env_file:
       - extractor/.env
+    # The dashboard calls POST /wake when it queues a book (app/wake.py), so extraction
+    # starts at once instead of on the next poll. It needs EXTRACTOR_SECRET in extractor/.env.
+    expose:
+      - "8080"
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.http.services.jasaraharja-extractor.loadbalancer.server.port=8080"
+      - "traefik.http.routers.jasaraharja-extractor.rule=Host(`${JR_EXTRACTOR_DOMAIN:-jasaraharja-extractor.majorsaleshub.com}`)"
+      - "traefik.http.routers.jasaraharja-extractor.entrypoints=websecure"
+      - "traefik.http.routers.jasaraharja-extractor.tls.certresolver=myresolver"
+      - "traefik.http.routers.jasaraharja-extractor.service=jasaraharja-extractor"
+      - "traefik.http.routers.jasaraharja-extractor.middlewares=crowdsec@docker,jasaraharja-extractor-ratelimit@docker"
+      - "traefik.http.middlewares.jasaraharja-extractor-ratelimit.ratelimit.average=60"
+      - "traefik.http.middlewares.jasaraharja-extractor-ratelimit.ratelimit.period=1m"
+      - "traefik.http.middlewares.jasaraharja-extractor-ratelimit.ratelimit.burst=20"
     deploy:
       # requeue_interrupted (app/worker.py) assumes one worker runs at a time.
       replicas: 1

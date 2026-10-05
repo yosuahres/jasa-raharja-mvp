@@ -12,7 +12,7 @@ import { toSearchResult } from "@/components/search/results";
 import { buttonVariants } from "@/components/ui/button";
 import { type AccidentCase, accidentCaseKeys, findAccidentCase } from "@/lib/accident-cases";
 import { getDataset, getTreatment, getTreatmentLines } from "@/lib/data/queries";
-import { LOCALITY_RANK, type Origin, originsOf, rankForCase, rankForTreatment, type TreatmentMatch } from "@/lib/scoring";
+import { ALL_LOCATIONS, ALL_LOCATIONS_PARAM, LOCALITY_RANK, type Origin, originsOf, rankForCase, rankForTreatment, type TreatmentMatch } from "@/lib/scoring";
 
 export const metadata: Metadata = {
   title: "Cari Rujukan",
@@ -36,10 +36,12 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
   const accidentCase = findAccidentCase(first(params.kasus));
   const [data, treatment] = await Promise.all([getDataset(), key ? getTreatment(key) : null]);
   const origins = originsOf(data.hospitals);
-  const origin = origins.find((o) => o.city === first(params.lokasi)) ?? origins[0];
+  // A city the documents name, or "Semua lokasi" — also what an unknown or missing `lokasi` means.
+  const origin = origins.length === 0 ? undefined : (origins.find((o) => o.city === first(params.lokasi)) ?? ALL_LOCATIONS);
+  const lokasi = origin?.city || ALL_LOCATIONS_PARAM;
 
   const search = (compact: boolean) => (
-    <AccidentSearch accidentCase={accidentCase} location={origin?.city ?? ""} cities={origins.map((o) => o.city)} compact={compact} />
+    <AccidentSearch accidentCase={accidentCase} location={lokasi} cities={origins.map((o) => o.city)} compact={compact} />
   );
 
   if (!origin) {
@@ -56,7 +58,7 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
   if (!treatment && accidentCase) {
     return (
       <Results search={search(true)}>
-        <CaseRecommendation accidentCase={accidentCase} origin={origin} bookIds={bookIds} />
+        <CaseRecommendation accidentCase={accidentCase} origin={origin} lokasi={lokasi} bookIds={bookIds} />
       </Results>
     );
   }
@@ -66,8 +68,8 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
     return (
       <div className="flex min-h-[calc(100dvh-3rem)] flex-col items-center justify-center px-4 pt-10 pb-[12vh] sm:px-8 lg:min-h-[calc(100dvh-4rem)]">
         <div className="w-full max-w-4xl">
-          <h1 className="text-center text-3xl font-semibold tracking-tight text-balance">Cari Rujukan</h1>
-          <div className="mt-7">{search(false)}</div>
+          {/* No title of its own: the app header names the page. */}
+          {search(false)}
         </div>
       </div>
     );
@@ -75,7 +77,7 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
 
   // Reached from an accident case: a way back to its other tindakan.
   const back = accidentCase
-    ? { href: `/rekomendasi?${new URLSearchParams({ kasus: accidentCase.id, lokasi: origin.city })}`, label: accidentCase.name }
+    ? { href: `/rekomendasi?${new URLSearchParams({ kasus: accidentCase.id, lokasi })}`, label: accidentCase.name }
     : undefined;
   const ranked = rankForTreatment(await getTreatmentLines([treatment.key], bookIds), origin, data);
   if (ranked.length === 0) {
@@ -135,7 +137,7 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
 }
 
 /** The hospitals ranked for a whole accident case, each holding the tindakan its document prices. */
-async function CaseRecommendation({ accidentCase, origin, bookIds }: { accidentCase: AccidentCase; origin: Origin; bookIds: string[] }) {
+async function CaseRecommendation({ accidentCase, origin, lokasi, bookIds }: { accidentCase: AccidentCase; origin: Origin; lokasi: string; bookIds: string[] }) {
   const [data, lines] = await Promise.all([getDataset(), getTreatmentLines(accidentCaseKeys(accidentCase), bookIds)]);
   const ranked = rankForCase(lines, accidentCase.steps, origin, data);
   const compareIds = ranked.slice(0, MAX_COMPARE).map((m) => m.summary.hospital.id);
@@ -143,10 +145,7 @@ async function CaseRecommendation({ accidentCase, origin, bookIds }: { accidentC
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight text-balance">{accidentCase.name}</h1>
-          <p className="mt-1 text-sm text-muted-foreground text-pretty">{accidentCase.description}</p>
-        </div>
+        <h1 className="min-w-0 text-xl font-semibold tracking-tight text-balance">{accidentCase.name}</h1>
         {compareIds.length > 1 && (
           <Link href={`/bandingkan?rs=${compareIds.join(",")}`} className={buttonVariants({ variant: "outline" })}>
             <GitCompareArrows data-icon="inline-start" />
@@ -158,7 +157,7 @@ async function CaseRecommendation({ accidentCase, origin, bookIds }: { accidentC
       {ranked.length > 0 ? (
         <ol className="mt-5 grid gap-3">
           {ranked.map((m) => (
-            <CaseResultCard key={m.summary.hospital.id} match={m} caseId={accidentCase.id} location={origin.city} />
+            <CaseResultCard key={m.summary.hospital.id} match={m} caseId={accidentCase.id} location={lokasi} />
           ))}
         </ol>
       ) : (

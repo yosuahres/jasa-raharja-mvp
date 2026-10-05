@@ -7,6 +7,7 @@ import { useId, useRef, useState, useTransition } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ACCIDENT_CASES, type AccidentCase } from "@/lib/accident-cases";
+import { ALL_LOCATIONS_PARAM } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
 import { FIELD, PLACEHOLDER } from "./search-field";
@@ -102,9 +103,10 @@ export function AccidentSearch({
           </span>
           <Select value={city} onValueChange={(next) => next && setCity(next)}>
             <SelectTrigger aria-labelledby={cityId} className={SELECT_TRIGGER}>
-              <SelectValue>{(value: string | null) => value || <span className={PLACEHOLDER}>Lokasi kejadian</span>}</SelectValue>
+              <SelectValue>{(value: string | null) => (value === ALL_LOCATIONS_PARAM ? "Semua lokasi" : value) || <span className={PLACEHOLDER}>Lokasi kejadian</span>}</SelectValue>
             </SelectTrigger>
             <SelectContent {...DROPDOWN} anchor={cityField}>
+              <SelectItem value={ALL_LOCATIONS_PARAM}>Semua lokasi</SelectItem>
               {cities.map((c) => (
                 <SelectItem key={c} value={c}>
                   {c}

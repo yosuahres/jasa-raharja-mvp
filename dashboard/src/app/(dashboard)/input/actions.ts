@@ -6,6 +6,7 @@ import { after } from "next/server";
 import { requireUser, saveError, slugify, text, uniqueId } from "@/lib/form";
 import { SHARED_DATA_TAG } from "@/lib/data/queries";
 import type { Detection, DetectedProfile } from "@/lib/data/types";
+import { wakeExtractor } from "@/lib/extractor";
 import { geocodeHospital } from "@/lib/geocode";
 import { findHospital } from "@/lib/hospital-match";
 import { createClient } from "@/lib/supabase/server";
@@ -113,6 +114,13 @@ export async function saveImport(_previous: SaveResult, data: FormData): Promise
   return { error: null, hospitalId };
 }
 
+/** Starts the extractor on a just-queued upload. */
+export async function startExtraction(): Promise<void> {
+  const supabase = await createClient();
+  if (await requireUser(supabase)) return;
+  await wakeExtractor();
+}
+
 /** Extracts another hospital out of a document that lists several. */
 export async function switchHospital(bookId: string, heading: string): Promise<SaveState> {
   const supabase = await createClient();
@@ -123,6 +131,21 @@ export async function switchHospital(bookId: string, heading: string): Promise<S
     .update({ facility_filter: heading, status: "queued", pages_done: 0, error: null })
     .eq("id", bookId)
     .eq("status", "review");
+  if (!error) after(wakeExtractor);
+  return { error: error ? saveError(error) : null };
+}
+
+/** Reads an upload again after the extractor failed on it. */
+export async function retryExtraction(bookId: string): Promise<SaveState> {
+  const supabase = await createClient();
+  const denied = await requireUser(supabase);
+  if (denied) return { error: denied };
+  const { error } = await supabase
+    .from("tariff_books")
+    .update({ status: "queued", pages_done: 0, error: null })
+    .eq("id", bookId)
+    .eq("status", "failed");
+  if (!error) after(wakeExtractor);
   return { error: error ? saveError(error) : null };
 }
 

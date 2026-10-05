@@ -63,6 +63,12 @@ const isActive = (pathname: string, { href, also = [] }: NavItem) =>
 const titleOf = (pathname: string) =>
   NAV.flatMap((group) => group.items).find((item) => isActive(pathname, item))?.label ?? "";
 
+/** The hospital whose page this is, if it's one. */
+const hospitalOf = (pathname: string, hospitals: PaletteHospital[]) => {
+  const id = pathname.match(/^\/rumah-sakit\/([^/]+)/)?.[1];
+  return id ? hospitals.find((h) => h.id === decodeURIComponent(id)) : undefined;
+};
+
 // The collapsed state lives on <html data-sidebar> (set before paint in the root layout) so CSS can style it without a flash.
 const readCollapsed = () =>
   document.documentElement.dataset.sidebar === "collapsed";
@@ -114,6 +120,7 @@ export function AppShell({
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const collapsed = useSidebarCollapsed();
+  const hospital = hospitalOf(pathname, hospitals);
   // Which groups are folded away; shared by the desktop sidebar and the mobile drawer.
   const [closedGroups, setClosedGroups] = useState<string[]>([]);
   const toggleGroup = (label: string) =>
@@ -178,7 +185,19 @@ export function AppShell({
                 <PanelLeftClose className="size-4" />
               )}
             </button>
-            <h1 className="truncate text-sm text-foreground">{titleOf(pathname)}</h1>
+            {hospital ? (
+              <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground">
+                <Link href="/rumah-sakit" className="shrink-0 transition-colors hover:text-foreground">
+                  Rumah Sakit
+                </Link>
+                <span aria-hidden>/</span>
+                <span aria-current="page" className="truncate font-medium text-foreground">
+                  {hospital.name}
+                </span>
+              </nav>
+            ) : (
+              <h1 className="truncate text-sm text-foreground">{titleOf(pathname)}</h1>
+            )}
           </header>
           <main className="min-w-0 flex-1 overflow-x-clip">{children}</main>
         </div>
