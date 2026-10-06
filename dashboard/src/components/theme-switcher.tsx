@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 
 type Theme = "light" | "dark" | "system";
 
-// A manual choice lives on <html data-theme> (applied before paint by the root layout); without one
-// the page follows the system.
+// The theme lives on <html data-theme>, light by default (applied before paint by the root layout);
+// without one the page follows the system.
 const readTheme = (): Theme => {
   const chosen = document.documentElement.dataset.theme;
   return chosen === "light" || chosen === "dark" ? chosen : "system";
@@ -26,8 +26,8 @@ const applyTheme = (theme: Theme) => {
   if (theme === "system") delete root.dataset.theme;
   else root.dataset.theme = theme;
   try {
-    if (theme === "system") localStorage.removeItem("theme");
-    else localStorage.setItem("theme", theme);
+    // Saved even for "system": no saved choice means light.
+    localStorage.setItem("theme", theme);
   } catch {
     // Storage can be unavailable (private mode); the choice still applies for this visit.
   }
