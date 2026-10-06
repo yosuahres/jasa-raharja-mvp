@@ -4,7 +4,7 @@ import Link from "next/link";
 import { TierBadge } from "@/components/tier-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { formatRupiah, joinFacts } from "@/lib/format";
-import { type CaseMatch, type CaseTreatment, LOCALITY_LABEL } from "@/lib/scoring";
+import type { CaseMatch, CaseTreatment } from "@/lib/scoring";
 
 const priceText = (t: CaseTreatment) => {
   if (t.priceMin === null || t.priceMax === null) return "—";
@@ -48,7 +48,7 @@ export function CaseResultCard({
             <TierBadge tier={m.tier} />
           </div>
           <p className="mt-0.5 truncate text-sm text-muted-foreground">
-            {joinFacts(hospital.city, LOCALITY_LABEL[m.locality], m.summary.tipe && `Tipe ${m.summary.tipe}`, igd && "IGD")} ·{" "}
+            {joinFacts(hospital.city, m.summary.tipe && `Tipe ${m.summary.tipe}`, igd && "IGD")} ·{" "}
             {hospital.partner ? "Mitra PKS" : <span className="text-tier-c-ink">Belum mitra PKS</span>}
           </p>
         </div>

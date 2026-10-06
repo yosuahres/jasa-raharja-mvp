@@ -22,17 +22,7 @@ import { toSearchResult } from "@/components/search/results";
 import { buttonVariants } from "@/components/ui/button";
 import { type AccidentCase, accidentCaseKeys, findAccidentCase } from "@/lib/accident-cases";
 import { getDataset, getTreatment, getTreatmentLines } from "@/lib/data/queries";
-import {
-  ALL_LOCATIONS,
-  ALL_LOCATIONS_PARAM,
-  type CaseMatch,
-  LOCALITY_RANK,
-  type Origin,
-  originsOf,
-  rankForCase,
-  rankForTreatment,
-  type TreatmentMatch,
-} from "@/lib/scoring";
+import { ALL_LOCATIONS_PARAM, type CaseMatch, citiesOf, rankForCase, rankForTreatment, type TreatmentMatch } from "@/lib/scoring";
 
 export const metadata: Metadata = {
   title: "Cari Rujukan",
@@ -49,7 +39,6 @@ const SORT_COMPARE: Record<SortKey, (a: TreatmentMatch, b: TreatmentMatch) => nu
   rekomendasi: () => 0,
   lengkap: () => 0,
   harga: (a, b) => a.priceMid - b.priceMid,
-  jarak: (a, b) => LOCALITY_RANK[a.locality] - LOCALITY_RANK[b.locality],
 };
 
 const treatmentCount = (m: CaseMatch) => m.steps.reduce((sum, step) => sum + step.treatments.length, 0);
@@ -61,7 +50,6 @@ const CASE_SORT_COMPARE: Record<SortKey, (a: CaseMatch, b: CaseMatch) => number>
   rekomendasi: () => 0,
   lengkap: (a, b) => b.covered - a.covered || treatmentCount(b) - treatmentCount(a),
   harga: (a, b) => priceRatioOf(a) - priceRatioOf(b),
-  jarak: (a, b) => LOCALITY_RANK[a.locality] - LOCALITY_RANK[b.locality],
 };
 
 export default async function RecommendationPage({ searchParams }: PageProps<"/rekomendasi">) {
@@ -69,16 +57,14 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
   const key = first(params.tindakan);
   const accidentCase = findAccidentCase(first(params.kasus));
   const [data, treatment] = await Promise.all([getDataset(), key ? getTreatment(key) : null]);
-  const origins = originsOf(data.hospitals);
-  // A city the documents name, or "Semua lokasi" — also what an unknown or missing `lokasi` means.
-  const origin = origins.length === 0 ? undefined : (origins.find((o) => o.city === first(params.lokasi)) ?? ALL_LOCATIONS);
-  const lokasi = origin?.city || ALL_LOCATIONS_PARAM;
+  const cities = citiesOf(data.hospitals);
+  // A city the documents name, or "" for "Semua lokasi" — also what an unknown or missing `lokasi` means.
+  const city = cities.find((c) => c === first(params.lokasi)) ?? "";
+  const lokasi = city || ALL_LOCATIONS_PARAM;
 
-  const search = (compact: boolean) => (
-    <AccidentSearch accidentCase={accidentCase} location={lokasi} cities={origins.map((o) => o.city)} compact={compact} />
-  );
+  const search = (compact: boolean) => <AccidentSearch accidentCase={accidentCase} location={lokasi} cities={cities} compact={compact} />;
 
-  if (!origin) {
+  if (cities.length === 0) {
     return (
       <Results search={search(true)}>
         <EmptyState title="Belum ada data" />
@@ -94,7 +80,7 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
       <Results search={search(true)}>
         <CaseRecommendation
           accidentCase={accidentCase}
-          origin={origin}
+          city={city}
           lokasi={lokasi}
           bookIds={bookIds}
           sort={parseSort(first(params.urut), CASE_SORT_OPTIONS)}
@@ -120,11 +106,11 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
   const back = accidentCase
     ? { href: `/rekomendasi?${new URLSearchParams({ kasus: accidentCase.id, lokasi })}`, label: accidentCase.name }
     : undefined;
-  const ranked = rankForTreatment(await getTreatmentLines([treatment.key], bookIds), origin, data);
+  const ranked = rankForTreatment(await getTreatmentLines([treatment.key], bookIds), city, data);
   if (ranked.length === 0) {
     return (
       <Results search={search(true)} back={back}>
-        <EmptyState title={`Tidak ada tarif untuk "${treatment.name}"`} />
+        <EmptyState title={city ? `Tidak ada tarif untuk "${treatment.name}" di ${city}` : `Tidak ada tarif untuk "${treatment.name}"`} />
       </Results>
     );
   }
@@ -173,21 +159,21 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
 /** The hospitals ranked for a whole accident case, each holding the tindakan its document prices. */
 async function CaseRecommendation({
   accidentCase,
-  origin,
+  city,
   lokasi,
   bookIds,
   sort,
   filters,
 }: {
   accidentCase: AccidentCase;
-  origin: Origin;
+  city: string;
   lokasi: string;
   bookIds: string[];
   sort: SortKey;
   filters: Filters;
 }) {
   const [data, lines] = await Promise.all([getDataset(), getTreatmentLines(accidentCaseKeys(accidentCase), bookIds)]);
-  const ranked = rankForCase(lines, accidentCase.steps, origin, data);
+  const ranked = rankForCase(lines, accidentCase.steps, city, data);
   const listed = applyFilters(ranked, filters, caseFactsOf).sort(CASE_SORT_COMPARE[sort]);
   const compareIds = ranked.slice(0, MAX_COMPARE).map((m) => m.summary.hospital.id);
 
@@ -196,7 +182,7 @@ async function CaseRecommendation({
       <>
         <h1 className="text-xl font-semibold tracking-tight text-balance">{accidentCase.name}</h1>
         <div className="mt-5">
-          <EmptyState title="Belum ada rumah sakit untuk kasus ini" />
+          <EmptyState title={city ? `Belum ada rumah sakit di ${city} untuk kasus ini` : "Belum ada rumah sakit untuk kasus ini"} />
         </div>
       </>
     );

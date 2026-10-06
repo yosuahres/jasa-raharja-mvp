@@ -33,35 +33,15 @@ const median = (values: number[]) => {
 export const isExpired = (hospital: Hospital, today = new Date()) =>
   hospital.tariffBook?.validTo != null && new Date(hospital.tariffBook.validTo) < today;
 
-/** Where a referral starts: a city and province as hospitals' documents print them. */
-export type Origin = { city: string; province: string };
-
-/** How near a hospital is to the origin. Documents print a city, not coordinates, so this is as close as it gets. */
-export type Locality = "kota" | "provinsi" | "lain";
-
-export const LOCALITY_LABEL: Record<Locality, string> = { kota: "Satu kota", provinsi: "Satu provinsi", lain: "Luar provinsi" };
-
-export const LOCALITY_RANK: Record<Locality, number> = { kota: 0, provinsi: 1, lain: 2 };
-
-const LOCALITY_SCORE: Record<Locality, number> = { kota: 100, provinsi: 50, lain: 0 };
-
-/** "Semua lokasi": no city chosen, so distance ranks no hospital above another. */
-export const ALL_LOCATIONS: Origin = { city: "", province: "" };
-
-/** `lokasi` in the URL for "Semua lokasi". */
+/** `lokasi` in the URL for "Semua lokasi": no city chosen, so every hospital is ranked. */
 export const ALL_LOCATIONS_PARAM = "semua";
 
-export const localityOf = (hospital: Hospital, origin: Origin): Locality => {
-  if (!origin.city) return "kota";
-  if (hospital.city && hospital.city === origin.city) return "kota";
-  return hospital.province && hospital.province === origin.province ? "provinsi" : "lain";
-};
-
 /** Every city a hospital's document names, to start a referral from. */
-export const originsOf = (hospitals: Hospital[]): Origin[] => {
-  const byCity = new Map(hospitals.filter((h) => h.city).map((h) => [h.city, { city: h.city, province: h.province }]));
-  return [...byCity.values()].sort((a, b) => a.city.localeCompare(b.city));
-};
+export const citiesOf = (hospitals: Hospital[]): string[] =>
+  [...new Set(hospitals.flatMap((h) => (h.city ? [h.city] : [])))].sort((a, b) => a.localeCompare(b));
+
+/** In the chosen city; any hospital when none is chosen. */
+const isIn = (hospital: Hospital, city: string) => !city || hospital.city === city;
 
 /** Share of the items its document shows, 0–100. Documents don't print how many or their hours, so presence is all that counts. */
 const coverage = (ids: string[], present: (id: string) => boolean) =>
@@ -206,7 +186,6 @@ export type TreatmentMatch = {
   medianPrice: number;
   /** Positive when cheaper than the median, as a share of it. */
   savingVsMedian: number;
-  locality: Locality;
   composite: number;
   /** Against the other hospitals that have it. */
   tier: Tier;
@@ -233,10 +212,10 @@ export const treatmentNameOf = (line: SearchedLine) => line.treatmentName ?? lin
 const midOf = (line: { priceMin: number; priceMax: number }) => (line.priceMin + line.priceMax) / 2;
 
 /**
- * Ranks the hospitals whose current document has rows found for a search: their general
- * score, the price of their plainest matching row against the other hospitals', and how near.
+ * Ranks the hospitals in a city whose current document has rows found for a search: their general
+ * score, and the price of their plainest matching row against every hospital's median.
  */
-export const rankForTreatment = (lines: SearchedLine[], origin: Origin, data: Dataset): TreatmentMatch[] => {
+export const rankForTreatment = (lines: SearchedLine[], city: string, data: Dataset): TreatmentMatch[] => {
   const priced = lines.filter(isPriced);
   const found = data.hospitals.flatMap((hospital) => {
     const own = priced
@@ -248,24 +227,20 @@ export const rankForTreatment = (lines: SearchedLine[], origin: Origin, data: Da
   const medianPrice = median(found.map((f) => midOf(f.line)));
   const summaries = allSummaries(data);
 
-  const matches = found.map(({ hospital, line, otherRows }) => {
+  const matches = found.filter((f) => isIn(f.hospital, city)).map(({ hospital, line, otherRows }) => {
       const summary = summaries.find((s) => s.hospital.id === hospital.id) ?? summarize(hospital, data);
       const priceMid = midOf(line);
       const savingVsMedian = (medianPrice - priceMid) / medianPrice;
-      const locality = localityOf(hospital, origin);
-      const access = 0.6 * LOCALITY_SCORE[locality] + 0.4 * serviceAccess(hospital);
-      const composite = 0.4 * summary.composite + 0.35 * costScore(priceMid / medianPrice) + 0.25 * access;
+      const composite = 0.4 * summary.composite + 0.35 * costScore(priceMid / medianPrice) + 0.1 * serviceAccess(hospital);
 
       const strengths: string[] = [];
       const notes: string[] = [];
       if (savingVsMedian >= 0.1) strengths.push(`Tarif ${Math.round(savingVsMedian * 100)}% di bawah median`);
-      if (locality === "kota" && origin.city) strengths.push(`Di ${origin.city}`);
       if (hospital.facilities.some((f) => f.facilityId === "igd" && f.available24h)) strengths.push("IGD 24 jam");
       if (savingVsMedian <= -0.15) notes.push(`Tarif ${Math.round(-savingVsMedian * 100)}% di atas median`);
-      if (locality === "lain") notes.push("Di luar provinsi");
       if (summary.dataExpired) notes.push("Data tarif kedaluwarsa");
 
-      return { summary, line, otherRows, priceMid, medianPrice, savingVsMedian, locality, composite, strengths, notes };
+      return { summary, line, otherRows, priceMid, medianPrice, savingVsMedian, composite, strengths, notes };
     });
   const placed = placings(matches, (m) => m.composite, THIRDS);
   return matches
@@ -305,7 +280,6 @@ export type CaseMatch = {
   steps: CaseStepCover[];
   /** Steps it has at least one tindakan for. */
   covered: number;
-  locality: Locality;
   composite: number;
   /** Against the other hospitals that have something for the case. */
   tier: Tier;
@@ -326,17 +300,20 @@ const caseTreatmentOf = (key: string, rows: TreatmentLine[]): CaseTreatment => {
 };
 
 /**
- * Ranks the hospitals for a whole accident case: how many of its steps their current document has
- * tindakan for (the most), their general score, and how near. Steps no document has anything for
- * are left out; hospitals with nothing for the case are too.
+ * Ranks the hospitals in a city for a whole accident case: how many of its steps their current
+ * document has tindakan for (the most), then their general score. Steps no document there has
+ * anything for are left out; hospitals with nothing for the case are too.
  */
-export const rankForCase = (lines: TreatmentLine[], caseSteps: AccidentStep[], origin: Origin, data: Dataset): CaseMatch[] => {
-  const steps = caseSteps.filter((step) => lines.some((l) => step.keys.includes(l.key)));
+export const rankForCase = (lines: TreatmentLine[], caseSteps: AccidentStep[], city: string, data: Dataset): CaseMatch[] => {
+  const hospitals = data.hospitals.filter((h) => isIn(h, city));
+  const bookIds = new Set(hospitals.flatMap((h) => (h.tariffBook ? [h.tariffBook.id] : [])));
+  const local = lines.filter((l) => bookIds.has(l.bookId));
+  const steps = caseSteps.filter((step) => local.some((l) => step.keys.includes(l.key)));
   if (steps.length === 0) return [];
   const summaries = allSummaries(data);
 
-  const found = data.hospitals.flatMap((hospital) => {
-    const own = lines.filter((l) => l.bookId === hospital.tariffBook?.id);
+  const found = hospitals.flatMap((hospital) => {
+    const own = local.filter((l) => l.bookId === hospital.tariffBook?.id);
     if (own.length === 0) return [];
     const covers = steps.map(
       (step): CaseStepCover => ({
@@ -357,10 +334,8 @@ export const rankForCase = (lines: TreatmentLine[], caseSteps: AccidentStep[], o
     const covered = covers.filter((c) => c.treatments.length > 0).length;
     // Steps count most: a hospital that can do the operation beats one with many small tindakan.
     const coverage = 70 * (covered / steps.length) + 30 * (keys / mostKeys);
-    const locality = localityOf(hospital, origin);
-    const access = 0.6 * LOCALITY_SCORE[locality] + 0.4 * serviceAccess(hospital);
-    const composite = 0.45 * coverage + 0.35 * summary.composite + 0.2 * access;
-    return { summary, steps: covers, covered, locality, composite };
+    const composite = 0.45 * coverage + 0.35 * summary.composite + 0.08 * serviceAccess(hospital);
+    return { summary, steps: covers, covered, composite };
   });
   const placed = placings(matches, (m) => m.composite, THIRDS);
   return matches

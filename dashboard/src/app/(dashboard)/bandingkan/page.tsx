@@ -13,7 +13,7 @@ import { UrlSelect } from "@/components/url-select";
 import { getBookRowStats, getDataset, searchLines } from "@/lib/data/queries";
 import type { Dataset, Hospital } from "@/lib/data/types";
 import { formatDate, formatJuta, formatPercent, formatRange, joinFacts } from "@/lib/format";
-import { allSummaries, fairPriceLevel, type HospitalSummary, originsOf, rankForTreatment, summarize, type TreatmentMatch } from "@/lib/scoring";
+import { allSummaries, fairPriceLevel, type HospitalSummary, rankForTreatment, summarize, type TreatmentMatch } from "@/lib/scoring";
 import { type Completeness, dataCompleteness } from "@/lib/tariff-book";
 import { cn } from "@/lib/utils";
 
@@ -63,9 +63,8 @@ export default async function ComparePage({ searchParams }: PageProps<"/bandingk
   const ids = hospitals.map((h) => h.id);
 
   // Matched against every hospital, so the median is the market's, not just these three's.
-  const origin = originsOf(hospitals)[0] ?? { city: "", province: "" };
   const bookIds = data.hospitals.flatMap((h) => (h.tariffBook ? [h.tariffBook.id] : []));
-  const matches = query ? rankForTreatment(await searchLines(query, bookIds), origin, data) : [];
+  const matches = query ? rankForTreatment(await searchLines(query, bookIds), "", data) : [];
 
   const ranked = allSummaries(data).sort((a, b) => (a.placing?.rank ?? Infinity) - (b.placing?.rank ?? Infinity));
   const columns: Column[] = await Promise.all(

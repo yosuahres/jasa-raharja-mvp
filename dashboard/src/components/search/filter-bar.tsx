@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import type { Tier } from "@/lib/data/types";
 
 import {
-  AREA_OPTIONS,
   countActiveFilters,
   DEFAULT_FILTERS,
   FILTER_PARAMS,
@@ -32,7 +31,6 @@ const RESET = Object.fromEntries(FILTER_PARAMS.map((key) => [key, null]));
 
 const SECTIONS = [
   { id: "tier", label: "Tier" },
-  { id: "lokasi", label: "Lokasi" },
   { id: "harga", label: "Harga" },
   { id: "lainnya", label: "Lainnya" },
 ] as const;
@@ -145,16 +143,6 @@ export function FilterButton({ facts }: { facts: FilterFacts[] }) {
                       <TierDot tier={tier} />
                       Tier {tier}
                       <span className="opacity-60 tabular-nums">{facts.filter((x) => x.tier === tier).length}</span>
-                    </Pill>
-                  ))}
-                </Pills>
-              </Section>
-
-              <Section id="lokasi" title="Lokasi">
-                <Pills>
-                  {AREA_OPTIONS.map((o) => (
-                    <Pill key={o.value} pressed={(filters.area ?? "") === o.value} onClick={() => set({ area: o.value || null })}>
-                      {o.label}
                     </Pill>
                   ))}
                 </Pills>

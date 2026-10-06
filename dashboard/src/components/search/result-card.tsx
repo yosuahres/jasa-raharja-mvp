@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import { TierBadge } from "@/components/tier-badge";
 import { formatRange, joinFacts } from "@/lib/format";
-import { LOCALITY_LABEL } from "@/lib/scoring";
 
 import type { SearchResult } from "./results";
 
@@ -26,7 +25,7 @@ export function ResultCard({ result: r, treatmentName }: { result: SearchResult;
           <TierBadge tier={r.tier} />
         </div>
         <p className="mt-1 truncate text-sm text-muted-foreground">
-          {joinFacts(r.city, LOCALITY_LABEL[r.locality], r.tipe && `Tipe ${r.tipe}`)} ·{" "}
+          {joinFacts(r.city, r.tipe && `Tipe ${r.tipe}`)} ·{" "}
           {r.partner ? "Mitra PKS" : <span className="text-tier-c-ink">Belum mitra PKS</span>}
         </p>
         {!sameName(r.rowName, treatmentName) && <p className="mt-2 line-clamp-2 text-xs text-foreground/80">{r.rowName}</p>}

@@ -1,5 +1,5 @@
 import type { Tier, Tipe } from "@/lib/data/types";
-import { type Locality, treatmentNameOf, type TreatmentMatch } from "@/lib/scoring";
+import { treatmentNameOf, type TreatmentMatch } from "@/lib/scoring";
 
 /** The slice of a TreatmentMatch a result card shows. */
 export type SearchResult = {
@@ -14,7 +14,6 @@ export type SearchResult = {
   rowName: string;
   priceMin: number;
   priceMax: number;
-  locality: Locality;
 };
 
 export const toSearchResult = (m: TreatmentMatch): SearchResult => ({
@@ -27,5 +26,4 @@ export const toSearchResult = (m: TreatmentMatch): SearchResult => ({
   rowName: treatmentNameOf(m.line),
   priceMin: m.line.priceMin,
   priceMax: m.line.priceMax,
-  locality: m.locality,
 });
