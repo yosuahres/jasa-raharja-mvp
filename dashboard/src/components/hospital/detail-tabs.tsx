@@ -1,15 +1,13 @@
 "use client";
 
 import { Tabs } from "@base-ui/react/tabs";
-import { Building2, LayoutGrid, type LucideIcon, ReceiptText, Stethoscope } from "lucide-react";
-import { Fragment } from "react";
+import { Building2, type LucideIcon, ReceiptText, Stethoscope } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-export type TabId = "overview" | "tarif" | "fasilitas" | "tenaga-medis";
+export type TabId = "tarif" | "fasilitas" | "tenaga-medis";
 
 const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
-  { id: "overview", label: "Overview", icon: LayoutGrid },
   { id: "tarif", label: "Tarif", icon: ReceiptText },
   { id: "fasilitas", label: "Fasilitas", icon: Building2 },
   { id: "tenaga-medis", label: "Tenaga medis", icon: Stethoscope },
@@ -21,7 +19,7 @@ type Count = { value: number; label: string; warn?: boolean };
 export function DetailTabs({
   panels,
   counts,
-  defaultTab = "overview",
+  defaultTab = "tarif",
 }: {
   panels: Record<TabId, React.ReactNode>;
   counts: Partial<Record<TabId, Count>>;
@@ -34,20 +32,18 @@ export function DetailTabs({
           {TABS.map((tab) => {
             const count = counts[tab.id];
             return (
-              <Fragment key={tab.id}>
-                {tab.id === "tarif" && <span aria-hidden className="mx-2 h-5 w-px shrink-0 self-center bg-border/60" />}
-                <Tabs.Tab
-                  value={tab.id}
-                  className="group flex shrink-0 cursor-pointer flex-col items-stretch gap-1 pt-1.5 text-sm whitespace-nowrap text-muted-foreground outline-none hover:text-foreground data-active:font-medium data-active:text-primary"
-                >
-                  <span className="flex items-center gap-1.5 rounded-md border border-transparent px-2 py-1 transition-colors group-hover:bg-muted/25 group-focus-visible:ring-3 group-focus-visible:ring-ring/50 group-data-active:border-border/40 group-data-active:bg-muted/40">
-                    <tab.icon className="size-3.5" />
-                    {tab.label}
-                    {count && <CountChip count={count} />}
-                  </span>
-                  <span className="h-0.5 rounded-full transition-colors group-data-active:bg-primary" />
-                </Tabs.Tab>
-              </Fragment>
+              <Tabs.Tab
+                key={tab.id}
+                value={tab.id}
+                className="group flex shrink-0 cursor-pointer flex-col items-stretch gap-1 pt-1.5 text-sm whitespace-nowrap text-muted-foreground outline-none hover:text-foreground data-active:font-medium data-active:text-primary"
+              >
+                <span className="flex items-center gap-1.5 rounded-md border border-transparent px-2 py-1 transition-colors group-hover:bg-muted/25 group-focus-visible:ring-3 group-focus-visible:ring-ring/50 group-data-active:border-border/40 group-data-active:bg-muted/40">
+                  <tab.icon className="size-3.5" />
+                  {tab.label}
+                  {count && <CountChip count={count} />}
+                </span>
+                <span className="h-0.5 rounded-full transition-colors group-data-active:bg-primary" />
+              </Tabs.Tab>
             );
           })}
         </Tabs.List>

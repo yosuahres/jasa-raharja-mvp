@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { DataOverview } from "@/components/hospital/data-overview";
 import { DetailPane } from "@/components/hospital/detail-pane";
 import { DetailTabs } from "@/components/hospital/detail-tabs";
 import { ProfileSidebar } from "@/components/hospital/profile-sidebar";
@@ -59,14 +58,12 @@ export default async function HospitalPage({ params, searchParams }: PageProps<"
   return (
     <DetailPane sidebar={<ProfileSidebar summary={summary} peer={comparisonPeer(hospital, data)} completeness={completeness} />}>
       <DetailTabs
-        defaultTab={category || query || page > 1 ? "tarif" : "overview"}
         counts={{
           tarif: book ? { value: book.rows, label: "baris tarif" } : undefined,
           fasilitas: { value: facilities.filter((f) => f.present).length, label: "fasilitas tersedia" },
           "tenaga-medis": { value: staff.filter((s) => s.present).length, label: "spesialis tersedia" },
         }}
         panels={{
-          overview: <DataOverview hospital={hospital} completeness={completeness} expired={summary.dataExpired} />,
           tarif:
             book && lines ? (
               <TariffLinesTable book={book} lines={lines.lines} total={lines.total} category={category} query={query} page={page} />
