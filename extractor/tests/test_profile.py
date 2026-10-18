@@ -26,7 +26,6 @@ def test_profile_fields_carry_their_source_and_skip_what_is_not_printed():
     assert profile["province"]["value"] == "Jawa Timur"
     assert profile["year"]["value"] == 2025
     assert profile["ownership"]["value"] == "Pemerintah"
-    assert profile["partner"]["value"] is False
     assert "kelas" not in profile and "address" not in profile
 
 

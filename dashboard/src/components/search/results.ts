@@ -8,7 +8,6 @@ export type SearchResult = {
   city: string;
   /** Its place in the overall ranking; null until it has a published document. */
   tipe: Tipe | null;
-  partner: boolean;
   tier: Tier;
   /** What its document calls the treatment, as printed. */
   rowName: string;
@@ -21,7 +20,6 @@ export const toSearchResult = (m: TreatmentMatch): SearchResult => ({
   name: m.summary.hospital.name,
   city: m.summary.hospital.city,
   tipe: m.summary.tipe,
-  partner: m.summary.hospital.partner,
   tier: m.tier,
   rowName: treatmentNameOf(m.line),
   priceMin: m.line.priceMin,

@@ -67,6 +67,7 @@ export function FilterButton({ facts }: { facts: FilterFacts[] }) {
     set({ tiers: filters.tiers.includes(tier) ? filters.tiers.filter((t) => t !== tier) : [...filters.tiers, tier] });
   const count = facts.filter((x) => matchesFilters(x, filters)).length;
   const isCase = facts.some((x) => x.complete !== undefined);
+  const sections = SECTIONS.filter((s) => s.id !== "lainnya" || isCase);
 
   const apply = () => {
     update(filterParams(filters));
@@ -83,7 +84,7 @@ export function FilterButton({ facts }: { facts: FilterFacts[] }) {
   const onScroll = () => {
     if (jumping.current) return;
     const top = body.current?.getBoundingClientRect().top ?? 0;
-    const passed = SECTIONS.filter(({ id }) => (sectionEl(id)?.getBoundingClientRect().top ?? Infinity) - top <= 24);
+    const passed = sections.filter(({ id }) => (sectionEl(id)?.getBoundingClientRect().top ?? Infinity) - top <= 24);
     const last = passed.at(-1);
     if (last) setCurrent(last.id);
   };
@@ -117,7 +118,7 @@ export function FilterButton({ facts }: { facts: FilterFacts[] }) {
 
           <div className="grid min-h-0 flex-1 gap-4 bg-muted px-4 py-4 sm:grid-cols-[11rem_minmax(0,1fr)] sm:px-6">
             <nav aria-label="Bagian filter" className="hidden self-start rounded-xl bg-card p-2 sm:grid">
-              {SECTIONS.map(({ id, label }) => (
+              {sections.map(({ id, label }) => (
                 <button
                   key={id}
                   onClick={() => jumpTo(id)}
@@ -158,21 +159,15 @@ export function FilterButton({ facts }: { facts: FilterFacts[] }) {
                 </Pills>
               </Section>
 
-              <Section id="lainnya" title="Lainnya">
-                <Pills>
-                  <Pill pressed={filters.partnerOnly} onClick={() => set({ partnerOnly: !filters.partnerOnly })}>
-                    Mitra PKS
-                  </Pill>
-                  <Pill pressed={filters.activeOnly} onClick={() => set({ activeOnly: !filters.activeOnly })}>
-                    Tarif berlaku
-                  </Pill>
-                  {isCase && (
+              {isCase && (
+                <Section id="lainnya" title="Lainnya">
+                  <Pills>
                     <Pill pressed={filters.completeOnly} onClick={() => set({ completeOnly: !filters.completeOnly })}>
                       Semua tahap
                     </Pill>
-                  )}
-                </Pills>
-              </Section>
+                  </Pills>
+                </Section>
+              )}
             </div>
           </div>
 

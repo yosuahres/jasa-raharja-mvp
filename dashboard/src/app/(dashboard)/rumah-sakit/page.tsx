@@ -4,27 +4,26 @@ import { CompareSelectionProvider } from "@/components/compare-selection";
 import { type HospitalRow, parseQuery } from "@/components/hospitals/hospital-list";
 import { HospitalTable } from "@/components/hospitals/hospital-table";
 import { getDataset } from "@/lib/data/queries";
-import { formatDate } from "@/lib/format";
 import type { HospitalSummary } from "@/lib/scoring";
 import { allSummaries, compositeOf } from "@/lib/scoring";
+import { bookYear } from "@/lib/tariff-book";
 
 export const metadata: Metadata = {
   title: "Rumah Sakit",
   description: "Daftar rumah sakit beserta tipenya",
 };
 
-const toRow = ({ hospital, tipe, price, services, scores, dataExpired }: HospitalSummary): HospitalRow => ({
+const toRow = ({ hospital, tipe, price, services, scores }: HospitalSummary): HospitalRow => ({
   id: hospital.id,
   name: hospital.name,
   city: hospital.city,
   ownership: hospital.ownership,
-  partner: hospital.partner,
   tipe,
   price: price && hospital.priceIndex ? { ...price, ratio: hospital.priceIndex.ratio } : null,
   services: { ...services, score: compositeOf(scores) },
-  tariff: !hospital.tariffBook ? "belum-ada" : dataExpired ? "kedaluwarsa" : "berlaku",
-  validTo: hospital.tariffBook?.validTo ?? null,
-  validToLabel: formatDate(hospital.tariffBook?.validTo ?? null),
+  tariff: hospital.tariffBook ? "ada" : "belum-ada",
+  year: bookYear(hospital.tariffBook),
+  version: hospital.tariffBook?.version ?? null,
 });
 
 export default async function HospitalsPage({ searchParams }: PageProps<"/rumah-sakit">) {

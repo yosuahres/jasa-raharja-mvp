@@ -158,6 +158,4 @@ def detect_profile(*, heading: str | None, file_name: str, rows: list[dict], fro
             profile["ownership"] = _field(ownership, f'"{match.group(0)}" di {label}')
             break
 
-    partner = next((label for label, text in places[1:] if "REKANAN" in words(text)), None)
-    profile["partner"] = _field(partner is not None, f'"Rekanan" di {partner}' if partner else "Tidak disebut sebagai rekanan")
     return profile

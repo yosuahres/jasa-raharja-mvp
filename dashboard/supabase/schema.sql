@@ -38,7 +38,6 @@ create table public.hospitals (
   city       text not null default '',  -- as its document prints it; empty when it doesn't
   province   text not null default '',
   address    text not null default '',
-  partner    boolean not null default false,  -- has a cooperation agreement (PKS) with Jasa Raharja
   beds       integer not null default 0 check (beds >= 0),
   lat        double precision,  -- from looking up its name and address on OpenStreetMap; null until found
   lng        double precision,

@@ -2,7 +2,7 @@ import type { Tier } from "@/lib/data/types";
 import type { CaseMatch, TreatmentMatch } from "@/lib/scoring";
 
 /** URL params owned by the filter bar. `q`, `lokasi` and `urut` are left alone on reset. */
-export const FILTER_PARAMS = ["tier", "harga", "pks", "aktif", "lengkap"] as const;
+export const FILTER_PARAMS = ["tier", "harga", "lengkap"] as const;
 
 export const TIERS: Tier[] = ["A", "B", "C"];
 
@@ -34,8 +34,6 @@ export const parseSort = (value: string | null | undefined, options: readonly So
 export type Filters = {
   tiers: Tier[];
   priceFactor: number | null;
-  partnerOnly: boolean;
-  activeOnly: boolean;
   /** Only hospitals with something for every step of an accident case. */
   completeOnly: boolean;
 };
@@ -50,23 +48,19 @@ export const parseFilters = (get: (key: string) => string | null | undefined): F
     // No param means every tier; an empty param means the user unticked them all.
     tiers: tier == null ? TIERS : tier.split(",").filter(isTier),
     priceFactor: price?.factor ?? null,
-    partnerOnly: get("pks") === "1",
-    activeOnly: get("aktif") === "1",
     completeOnly: get("lengkap") === "1",
   };
 };
 
 export const countActiveFilters = (f: Filters) =>
-  [f.tiers.length < TIERS.length, f.priceFactor !== null, f.partnerOnly, f.activeOnly, f.completeOnly].filter(Boolean).length;
+  [f.tiers.length < TIERS.length, f.priceFactor !== null, f.completeOnly].filter(Boolean).length;
 
-export const DEFAULT_FILTERS: Filters = { tiers: TIERS, priceFactor: null, partnerOnly: false, activeOnly: false, completeOnly: false };
+export const DEFAULT_FILTERS: Filters = { tiers: TIERS, priceFactor: null, completeOnly: false };
 
 /** Filters as URL params; `null` removes one. The inverse of parseFilters. */
 export const filterParams = (f: Filters): Record<(typeof FILTER_PARAMS)[number], string | null> => ({
   tier: f.tiers.length === TIERS.length ? null : TIERS.filter((t) => f.tiers.includes(t)).join(","),
   harga: PRICE_OPTIONS.find((o) => o.factor === f.priceFactor)?.value || null,
-  pks: f.partnerOnly ? "1" : null,
-  aktif: f.activeOnly ? "1" : null,
   lengkap: f.completeOnly ? "1" : null,
 });
 
@@ -75,8 +69,6 @@ export type FilterFacts = {
   tier: Tier;
   /** Price against the median, 1 at it; null when it can't be compared. */
   priceRatio: number | null;
-  partner: boolean;
-  expired: boolean;
   /** Covers every step of an accident case; undefined outside one. */
   complete?: boolean;
 };
@@ -84,24 +76,18 @@ export type FilterFacts = {
 export const factsOf = (m: TreatmentMatch): FilterFacts => ({
   tier: m.tier,
   priceRatio: m.priceMid / m.medianPrice,
-  partner: m.summary.hospital.partner,
-  expired: m.summary.dataExpired,
 });
 
 /** A case spans many tindakan, so its price is the hospital's prices against the others' overall. */
 export const caseFactsOf = (m: CaseMatch): FilterFacts => ({
   tier: m.tier,
   priceRatio: m.summary.hospital.priceIndex?.ratio ?? null,
-  partner: m.summary.hospital.partner,
-  expired: m.summary.dataExpired,
   complete: m.covered === m.steps.length,
 });
 
 export const matchesFilters = (x: FilterFacts, f: Filters) =>
   f.tiers.includes(x.tier) &&
   (f.priceFactor === null || (x.priceRatio !== null && x.priceRatio <= f.priceFactor)) &&
-  (!f.partnerOnly || x.partner) &&
-  (!f.activeOnly || !x.expired) &&
   (!f.completeOnly || x.complete !== false);
 
 export const applyFilters = <T>(list: T[], f: Filters, facts: (item: T) => FilterFacts) =>

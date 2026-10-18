@@ -1,22 +1,26 @@
 import { CARE_CATEGORIES } from "./categories";
-import type { Hospital } from "./data/types";
-import { formatDate } from "./format";
+import type { Hospital, TariffBook } from "./data/types";
 
 export type Completeness = { label: string; complete: boolean; detail: string }[];
 
-/** Which inputs the scores rest on, and which of them are missing or stale. */
-export const dataCompleteness = (
-  hospital: Hospital,
-  rowStats: { total: number; needsCheck: number } | null,
-  today = new Date(),
-): Completeness => {
+/** The year a document prints for its tariffs; null when it prints none. */
+export const bookYear = (book: TariffBook | null): number | null => (book?.validFrom ? new Date(book.validFrom).getFullYear() : null);
+
+/** "Tahun 2025", or that the document prints none. */
+export const bookYearLabel = (book: TariffBook) => {
+  const year = bookYear(book);
+  return year ? `Tahun ${year}` : "Tahun tidak tercetak di dokumen";
+};
+
+/** Which inputs the scores rest on, and which of them are missing. */
+export const dataCompleteness = (hospital: Hospital, rowStats: { total: number; needsCheck: number } | null): Completeness => {
   const book = hospital.tariffBook;
   const services = CARE_CATEGORIES.filter((c) => (book?.categories[c] ?? 0) > 0).length;
   return [
     {
-      label: "Data tarif berlaku",
-      complete: book?.validTo != null && new Date(book.validTo) >= today,
-      detail: !book ? "Belum ada data tarif terbit" : book.validTo ? `s.d. ${formatDate(book.validTo)}` : "Tahun tidak tercetak di dokumen",
+      label: "Data tarif",
+      complete: book !== null,
+      detail: !book ? "Belum ada data tarif terbit" : bookYearLabel(book),
     },
     {
       label: "Baris tarif terbaca jelas",

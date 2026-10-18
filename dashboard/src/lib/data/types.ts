@@ -108,7 +108,6 @@ export type DetectedProfile = {
   year?: DetectedField<number>;
   address?: DetectedField<string>;
   ownership?: DetectedField<NonNullable<Hospital["ownership"]>>;
-  partner?: DetectedField<boolean>;
 };
 
 /** A hospital heading in the document, for a regulation that lists many. */
@@ -123,7 +122,6 @@ export type Hospital = {
   city: string;
   province: string;
   address: string;
-  partner: boolean;
   beds: number;
   /** Where its name and address put it on the map; null until the lookup finds it. */
   location: { lat: number; lng: number } | null;

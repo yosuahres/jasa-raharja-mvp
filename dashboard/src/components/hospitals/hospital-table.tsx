@@ -77,22 +77,12 @@ const facetsOf = (rows: HospitalRow[]): Facet[] => {
     ];
   };
   const tipe = counts("tipe");
-  const mitra = counts("mitra");
   const tarif = counts("tarif");
 
   return [
     { id: "kota", label: "Kota", choices: printed("kota") },
     { id: "tipe", label: "Tipe", choices: TIPES.map((t) => ({ value: t, label: `Tipe ${t}`, dot: TIPE_DOT[t], count: tipe.get(t) ?? 0 })) },
     { id: "kepemilikan", label: "Kepemilikan", choices: printed("kepemilikan") },
-    {
-      id: "mitra",
-      label: "Mitra",
-      single: true,
-      choices: [
-        { value: "ya", label: "Mitra", count: mitra.get("ya") ?? 0 },
-        { value: "tidak", label: "Belum mitra", count: mitra.get("tidak") ?? 0 },
-      ],
-    },
     {
       id: "tarif",
       label: "Data tarif",
@@ -109,7 +99,7 @@ const facetsOf = (rows: HospitalRow[]): Facet[] => {
 /**
  * The hospital list: search, sort, filters and column settings above a grid table, paged below.
  * Rows come in ranking order. Search, filters and sort follow the URL (`q`, `kota`, `tipe`, `milik`,
- * `mitra`, `tarif`, `urut`); column order, visibility and widths are kept in this browser.
+ * `tarif`, `urut`); column order, visibility and widths are kept in this browser.
  * Render inside CompareSelectionProvider.
  */
 export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial: HospitalQuery }) {
@@ -332,8 +322,9 @@ function HospitalCell({ column, row }: { column: ColumnId; row: HospitalRow }) {
       return row.tariff === "belum-ada" ? (
         <span className="block truncate font-medium text-tier-c-ink">Belum ada data tarif</span>
       ) : (
-        <span className={cn("block truncate", row.tariff === "kedaluwarsa" && "font-medium text-tier-c-ink")}>
-          {row.tariff === "kedaluwarsa" ? "Kedaluwarsa" : "Berlaku s.d."} {row.validToLabel}
+        <span className="block truncate">
+          {row.year ? `Tahun ${row.year}` : "Tahun tidak tercetak"}
+          <span className="text-muted-foreground"> · versi {row.version}</span>
         </span>
       );
     case "tipe":
@@ -342,7 +333,5 @@ function HospitalCell({ column, row }: { column: ColumnId; row: HospitalRow }) {
       return row.city ? <span className="block truncate">{row.city}</span> : <Missing />;
     case "kepemilikan":
       return row.ownership ? <span className="block truncate">{row.ownership}</span> : <Missing />;
-    case "mitra":
-      return row.partner ? <span>Mitra</span> : <span className="text-tier-c-ink">Belum mitra</span>;
   }
 }

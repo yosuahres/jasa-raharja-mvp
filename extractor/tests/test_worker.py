@@ -148,7 +148,6 @@ def test_review_carries_what_the_book_says_besides_prices(ubaya_bytes):
     assert saved["detected_name"] == profile["name"]["value"] == "RS UBAYA"
     assert profile["year"]["value"] == 2025
     assert profile["ownership"]["value"] == "Swasta"
-    assert profile["partner"]["value"] is True  # "Rekanan" in the file name
     assert "city" not in profile  # Ubaya doesn't print its city; the preview asks for it
 
 
