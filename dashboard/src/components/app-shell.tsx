@@ -4,6 +4,7 @@ import {
   Building2,
   ChevronDown,
   FileUp,
+  House,
   type LucideIcon,
   MapIcon,
   Menu,
@@ -41,6 +42,9 @@ type NavGroup = {
   tiled?: boolean;
 };
 
+/** Sits on its own above the groups. */
+const HOME: NavItem = { href: "/", label: "Beranda", icon: House };
+
 const NAV: NavGroup[] = [
   {
     label: "Rujukan",
@@ -61,7 +65,7 @@ const isActive = (pathname: string, { href, also = [] }: NavItem) =>
   href === "/" ? pathname === "/" : [href, ...also].some((prefix) => pathname.startsWith(prefix));
 
 const titleOf = (pathname: string) =>
-  NAV.flatMap((group) => group.items).find((item) => isActive(pathname, item))?.label ?? "";
+  [HOME, ...NAV.flatMap((group) => group.items)].find((item) => isActive(pathname, item))?.label ?? "";
 
 /** The hospital whose page this is, if it's one. */
 const hospitalOf = (pathname: string, hospitals: PaletteHospital[]) => {
@@ -191,9 +195,21 @@ export function AppShell({
                   Rumah Sakit
                 </Link>
                 <span aria-hidden>/</span>
-                <span aria-current="page" className="truncate font-medium text-foreground">
-                  {hospital.name}
-                </span>
+                {pathname.endsWith("/perbarui") ? (
+                  <>
+                    <Link href={`/rumah-sakit/${hospital.id}`} className="truncate transition-colors hover:text-foreground">
+                      {hospital.name}
+                    </Link>
+                    <span aria-hidden>/</span>
+                    <span aria-current="page" className="shrink-0 font-medium text-foreground">
+                      Perbarui tarif
+                    </span>
+                  </>
+                ) : (
+                  <span aria-current="page" className="truncate font-medium text-foreground">
+                    {hospital.name}
+                  </span>
+                )}
               </nav>
             ) : (
               <h1 className="truncate text-sm text-foreground">{titleOf(pathname)}</h1>
@@ -286,6 +302,7 @@ function Sidebar({
       </Tooltip>
 
       <nav className="mt-4 flex flex-col gap-3">
+        <NavLink item={HOME} collapsed={collapsed} current={isCurrent(HOME)} onClick={onItemClick(HOME.href)} />
         {NAV.map((group) => {
           const groupOpen = !closedGroups.includes(group.label);
           return (
@@ -310,33 +327,16 @@ function Sidebar({
               </div>
               {/* The collapsed rail has no headers to unfold a group with, so it always lists every item. */}
               <div className={cn("flex flex-col gap-0.5", !groupOpen && "hidden sidebar-collapsed:flex")}>
-                {group.items.map((item) => {
-                  const { href, label, icon: Icon } = item;
-                  return (
-                    <Tooltip key={href} disabled={!collapsed}>
-                      <TooltipTrigger
-                        render={
-                          <Link
-                            href={href}
-                            onClick={onItemClick(href)}
-                            aria-current={isCurrent(item) ? "page" : undefined}
-                            className="flex h-7 items-center gap-2.5 overflow-hidden rounded-md px-1.5 text-[13px] font-medium whitespace-nowrap text-sidebar-foreground transition-colors hover:bg-sidebar-accent aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground"
-                          />
-                        }
-                      >
-                        {group.tiled ? (
-                          <span className="flex size-4 shrink-0 items-center justify-center rounded bg-blue-500 text-white">
-                            <Icon className="size-3" />
-                          </span>
-                        ) : (
-                          <Icon className="size-4 shrink-0 text-muted-foreground/80" />
-                        )}
-                        <span className={FADE}>{label}</span>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">{label}</TooltipContent>
-                    </Tooltip>
-                  );
-                })}
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.href}
+                    item={item}
+                    tiled={group.tiled}
+                    collapsed={collapsed}
+                    current={isCurrent(item)}
+                    onClick={onItemClick(item.href)}
+                  />
+                ))}
               </div>
             </div>
           );
@@ -347,5 +347,45 @@ function Sidebar({
         <UserMenu user={user} labelClassName={FADE} />
       </div>
     </div>
+  );
+}
+
+/** One item of the nav; `tiled` puts its icon white on a blue tile. */
+function NavLink({
+  item: { href, label, icon: Icon },
+  tiled,
+  collapsed,
+  current,
+  onClick,
+}: {
+  item: NavItem;
+  tiled?: boolean;
+  collapsed: boolean;
+  current: boolean;
+  onClick: (event: React.MouseEvent) => void;
+}) {
+  return (
+    <Tooltip disabled={!collapsed}>
+      <TooltipTrigger
+        render={
+          <Link
+            href={href}
+            onClick={onClick}
+            aria-current={current ? "page" : undefined}
+            className="flex h-7 items-center gap-2.5 overflow-hidden rounded-md px-1.5 text-[13px] font-medium whitespace-nowrap text-sidebar-foreground transition-colors hover:bg-sidebar-accent aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground"
+          />
+        }
+      >
+        {tiled ? (
+          <span className="flex size-4 shrink-0 items-center justify-center rounded bg-blue-500 text-white">
+            <Icon className="size-3" />
+          </span>
+        ) : (
+          <Icon className="size-4 shrink-0 text-muted-foreground/80" />
+        )}
+        <span className={FADE}>{label}</span>
+      </TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
   );
 }
