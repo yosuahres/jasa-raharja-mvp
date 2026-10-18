@@ -4,28 +4,26 @@ import {
   Building,
   CalendarRange,
   ChevronDown,
-  CircleCheck,
   FileText,
   GitCompareArrows,
-  Handshake,
   HeartPulse,
   Landmark,
   ListChecks,
   type LucideIcon,
   Map as MapIcon,
   MapPin,
+  RefreshCw,
   Shapes,
   Trophy,
-  Upload,
 } from "lucide-react";
 import Link from "next/link";
 
 import { RatingPill } from "@/components/rating";
+import { ScoreParameters } from "@/components/score-parameters";
 import { TipeBadge } from "@/components/tier-badge";
 import type { Hospital } from "@/lib/data/types";
-import { formatDate } from "@/lib/format";
 import type { HospitalSummary } from "@/lib/scoring";
-import type { Completeness } from "@/lib/tariff-book";
+import { bookYear, type Completeness } from "@/lib/tariff-book";
 import { cn } from "@/lib/utils";
 
 const ACTION =
@@ -56,21 +54,23 @@ export function ProfileSidebar({
           <Link
             href={`/bandingkan?rs=${compareIds.join(",")}`}
             title={peer ? `Bandingkan dengan ${peer.name}` : "Bandingkan"}
-            aria-label="Bandingkan"
             className={ACTION}
           >
             <GitCompareArrows className="size-3.5 shrink-0" />
-            <span className="hidden truncate @sm:inline">Bandingkan</span>
+            <span className="truncate">Bandingkan</span>
           </Link>
-          <a href={mapsUrl} target="_blank" rel="noopener noreferrer" title="Cari di Google Maps" aria-label="Cari di Google Maps" className={ACTION}>
+          <a href={mapsUrl} target="_blank" rel="noopener noreferrer" title="Cari di Google Maps" className={ACTION}>
             <MapPin className="size-3.5 shrink-0" />
-            <span className="hidden truncate @sm:inline">Maps</span>
+            <span className="truncate">Maps</span>
           </a>
-          <Link href="/input" title="Upload dokumen baru" aria-label="Upload dokumen baru" className={ACTION}>
-            <Upload className="size-3.5 shrink-0" />
-            <span className="hidden truncate @sm:inline">Upload</span>
-          </Link>
         </div>
+        <Link
+          href={`/rumah-sakit/${hospital.id}/perbarui`}
+          className="flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors outline-none hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <RefreshCw className="size-3.5 shrink-0" />
+          Perbarui data tarif
+        </Link>
       </div>
 
       <Section title="Penilaian">
@@ -95,15 +95,16 @@ export function ProfileSidebar({
         </Field>
       </Section>
 
+      <Section title="Penilaian per parameter">
+        <ScoreParameters parameters={summary.parameters} total={summary.servicesScore} />
+      </Section>
+
       <Section title="Profil">
         <Field icon={Landmark} label="Kepemilikan">
           {hospital.ownership}
         </Field>
         <Field icon={BedDouble} label="Tempat tidur">
           {hospital.beds > 0 && <span className="tabular-nums">{hospital.beds.toLocaleString("id-ID")}</span>}
-        </Field>
-        <Field icon={Handshake} label="Kerja sama">
-          <span className={cn(!hospital.partner && "text-tier-c-ink")}>{hospital.partner ? "Mitra PKS" : "Belum mitra PKS"}</span>
         </Field>
         <Field icon={MapPin} label="Alamat">
           {hospital.address}
@@ -122,20 +123,8 @@ export function ProfileSidebar({
             <Field icon={FileText} label="Versi">
               {book.version}
             </Field>
-            <Field icon={CalendarRange} label="Berlaku">
-              <span className="tabular-nums">
-                {formatDate(book.validFrom)} – {formatDate(book.validTo)}
-              </span>
-            </Field>
-            <Field icon={CircleCheck} label="Status">
-              <span
-                className={cn(
-                  "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
-                  summary.dataExpired ? "bg-tier-c-soft text-tier-c-ink" : "bg-tier-a-soft text-tier-a-ink",
-                )}
-              >
-                {summary.dataExpired ? "Kedaluwarsa" : "Berlaku"}
-              </span>
+            <Field icon={CalendarRange} label="Tahun tarif">
+              {bookYear(book) ?? <span className="text-muted-foreground">Tidak tercetak di dokumen</span>}
             </Field>
           </>
         ) : (

@@ -29,10 +29,6 @@ const median = (values: number[]) => {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
 
-/** True when the current document has run out. Without a printed year it can't. */
-export const isExpired = (hospital: Hospital, today = new Date()) =>
-  hospital.tariffBook?.validTo != null && new Date(hospital.tariffBook.validTo) < today;
-
 /** `lokasi` in the URL for "Semua lokasi": no city chosen, so every hospital is ranked. */
 export const ALL_LOCATIONS_PARAM = "semua";
 
@@ -89,6 +85,45 @@ export const generalScores = (hospital: Hospital, data: Dataset): Scores => ({
 export const compositeOf = (scores: Scores) =>
   scores.clinical * WEIGHTS.clinical + scores.facility * WEIGHTS.facility + scores.services * WEIGHTS.services + scores.access * WEIGHTS.access;
 
+/** One parameter of the Layanan score: its weight, the hospital's score on it (0–100), and what that counts. */
+export type ScoreParameter = { key: keyof Scores; label: string; weight: number; score: number; detail: string };
+
+export const PARAMETER_LABEL: Record<keyof Scores, string> = {
+  clinical: "Klinis",
+  facility: "Fasilitas",
+  services: "Jenis layanan",
+  access: "Akses darurat",
+};
+
+const accessDetail = (hospital: Hospital) => {
+  const igd = hasFacility(hospital, "igd");
+  const ambulans = hasFacility(hospital, "ambulans");
+  if (igd && ambulans) return "IGD dan ambulans";
+  if (igd) return "IGD, tanpa ambulans";
+  if (ambulans) return "Ambulans, tanpa IGD";
+  return "Tanpa IGD dan ambulans";
+};
+
+/** The Layanan score parameter by parameter, heaviest first, each with what its document shows. */
+export const scoreParameters = (hospital: Hospital, data: Dataset, scores = generalScores(hospital, data)): ScoreParameter[] => {
+  const specialists = data.catalog.specialties.filter((s) => hospital.staff.some((x) => x.specialtyId === s.id)).length;
+  const facilities = data.catalog.facilities.filter((f) => hasFacility(hospital, f.id)).length;
+  const services = CARE_CATEGORIES.filter((c) => (hospital.tariffBook?.categories[c] ?? 0) > 0).length;
+  const parameter = (key: keyof Scores, detail: string): ScoreParameter => ({
+    key,
+    label: PARAMETER_LABEL[key],
+    weight: WEIGHTS[key],
+    score: scores[key],
+    detail,
+  });
+  return [
+    parameter("clinical", `${specialists} dari ${data.catalog.specialties.length} spesialis`),
+    parameter("facility", `${facilities} dari ${data.catalog.facilities.length} fasilitas`),
+    parameter("services", `${services} dari ${CARE_CATEGORIES.length} jenis layanan`),
+    parameter("access", accessDetail(hospital)),
+  ];
+};
+
 export type PriceLevel = "murah" | "wajar" | "mahal";
 export type ServiceLevel = "lengkap" | "cukup" | "terbatas";
 
@@ -117,6 +152,10 @@ export type HospitalSummary = {
   hospital: Hospital;
   /** The parts of the Layanan rating. */
   scores: Scores;
+  /** The same parts, each with its weight and what its document shows; `scores` weighted is `servicesScore`. */
+  parameters: ScoreParameter[];
+  /** Its Layanan score, 0–100, before it is banded. */
+  servicesScore: number;
   /** Prices against the other hospitals'; null until another hospital's document shares rows with its. */
   price: Rating<PriceLevel> | null;
   services: Rating<ServiceLevel>;
@@ -125,7 +164,6 @@ export type HospitalSummary = {
   /** Its quarter among every hospital with a published document; null until this one has one. */
   tipe: Tipe | null;
   placing: Placing<Tipe> | null;
-  dataExpired: boolean;
 };
 
 /**
@@ -148,13 +186,15 @@ export const allSummaries = (data: Dataset): HospitalSummary[] => {
     const pricePlace = pricePlaces.get(hospital);
     const servicePlace = servicePlaces.get(hospital);
     const parts = [pricePlace, servicePlace].filter((p): p is Placing => p !== undefined).map(percentile);
+    const own = scores.get(hospital) ?? generalScores(hospital, data);
     return {
       hospital,
-      scores: scores.get(hospital) ?? generalScores(hospital, data),
+      scores: own,
+      parameters: scoreParameters(hospital, data, own),
+      servicesScore: compositeOf(own),
       price: pricePlace && hospital.priceIndex ? { level: PRICE_BY_TIER[pricePlace.tier], reason: priceReason(hospital.priceIndex) } : null,
       services: { level: SERVICE_BY_TIER[servicePlace?.tier ?? "C"], reason: serviceReason(hospital) },
       composite: parts.length ? (parts.reduce((sum, p) => sum + p, 0) / parts.length) * 100 : 0,
-      dataExpired: isExpired(hospital),
     };
   });
   const overall = placings(
@@ -238,7 +278,6 @@ export const rankForTreatment = (lines: SearchedLine[], city: string, data: Data
       if (savingVsMedian >= 0.1) strengths.push(`Tarif ${Math.round(savingVsMedian * 100)}% di bawah median`);
       if (hospital.facilities.some((f) => f.facilityId === "igd" && f.available24h)) strengths.push("IGD 24 jam");
       if (savingVsMedian <= -0.15) notes.push(`Tarif ${Math.round(-savingVsMedian * 100)}% di atas median`);
-      if (summary.dataExpired) notes.push("Data tarif kedaluwarsa");
 
       return { summary, line, otherRows, priceMid, medianPrice, savingVsMedian, composite, strengths, notes };
     });

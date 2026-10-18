@@ -12,9 +12,9 @@ import { UrlSearchInput } from "@/components/url-search-input";
 import { UrlSelect } from "@/components/url-select";
 import { getBookRowStats, getDataset, searchLines } from "@/lib/data/queries";
 import type { Dataset, Hospital } from "@/lib/data/types";
-import { formatDate, formatJuta, formatPercent, formatRange, joinFacts } from "@/lib/format";
+import { formatJuta, formatPercent, formatRange, joinFacts } from "@/lib/format";
 import { allSummaries, fairPriceLevel, type HospitalSummary, rankForTreatment, summarize, type TreatmentMatch } from "@/lib/scoring";
-import { type Completeness, dataCompleteness } from "@/lib/tariff-book";
+import { bookYearLabel, type Completeness, dataCompleteness } from "@/lib/tariff-book";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -334,15 +334,33 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
                 </span>
               )}
             />
+            {columns[0].summary.parameters.map((p, index) => (
+              <CompareRow
+                key={p.key}
+                label={p.label}
+                hint={`Bobot ${formatPercent(p.weight)} dari skor layanan`}
+                columns={columns}
+                best={bestOf(
+                  columns.map((c) => c.summary.parameters[index].score),
+                  "high",
+                )}
+                render={(c) => <Score value={c.summary.parameters[index].score} detail={c.summary.parameters[index].detail} />}
+              />
+            ))}
+            <CompareRow
+              label="Skor layanan"
+              hint="Keempat parameter, menurut bobotnya"
+              columns={columns}
+              best={bestOf(
+                columns.map((c) => c.summary.servicesScore),
+                "high",
+              )}
+              render={(c) => <Score value={c.summary.servicesScore} />}
+            />
 
             <Section title="Profil" />
             <CompareRow label="Kepemilikan" columns={columns} render={(c) => c.hospital.ownership ?? "—"} />
             <CompareRow label="Kota" columns={columns} render={(c) => joinFacts(c.hospital.city, c.hospital.province) || "—"} />
-            <CompareRow
-              label="Mitra PKS"
-              columns={columns}
-              render={(c) => <Presence present={c.hospital.partner} detail={c.hospital.partner ? "Mitra PKS" : "Belum mitra"} />}
-            />
 
             <Section title="Fasilitas" />
             {data.catalog.facilities.map((f) => (
@@ -378,9 +396,7 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
                 c.hospital.tariffBook ? (
                   <span>
                     Versi {c.hospital.tariffBook.version}
-                    <span className="block text-xs text-muted-foreground">
-                      {formatDate(c.hospital.tariffBook.validFrom)} – {formatDate(c.hospital.tariffBook.validTo)}
-                    </span>
+                    <span className="block text-xs text-muted-foreground">{bookYearLabel(c.hospital.tariffBook)}</span>
                   </span>
                 ) : (
                   <Muted>Belum ada data tarif</Muted>
@@ -498,6 +514,17 @@ function Presence({ present, detail, critical = false }: { present: boolean; det
       <span className={cn("text-sm", !present && (critical ? "font-medium text-tier-c-ink" : "text-muted-foreground"))}>
         {detail}
       </span>
+    </span>
+  );
+}
+
+/** A 0–100 score, with what it counts under it. */
+function Score({ value, detail }: { value: number; detail?: string }) {
+  return (
+    <span>
+      <span className="font-medium tabular-nums">{Math.round(value)}</span>
+      <span className="text-xs text-muted-foreground"> / 100</span>
+      {detail && <span className="block text-xs text-muted-foreground">{detail}</span>}
     </span>
   );
 }
