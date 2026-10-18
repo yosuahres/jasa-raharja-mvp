@@ -1,12 +1,13 @@
 "use client";
 
-import { Check, Loader2 } from "lucide-react";
+import { Check, FileText, Loader2 } from "lucide-react";
 
 import type { UnfinishedUpload } from "@/lib/data/queries";
+import { bookYearLabel } from "@/lib/tariff-book";
 import { cn } from "@/lib/utils";
 
 import { ExtractionFailed, ExtractionProgress } from "./extraction-progress";
-import { ImportPreview } from "./import-preview";
+import { ImportPreview, type UpdateTarget } from "./import-preview";
 import { UploadForm } from "./upload-form";
 import { type ImportState, useTariffImport } from "./use-tariff-import";
 
@@ -15,6 +16,9 @@ const STEPS = [
   { id: 2, label: "Baca dokumen" },
   { id: 3, label: "Periksa & simpan" },
 ] as const;
+
+/** The same steps for a new version of one hospital's tariffs; the last one compares before publishing. */
+const UPDATE_STEPS = [STEPS[0], STEPS[1], { id: 3, label: "Bandingkan & terbitkan" }] as const;
 
 type Step = (typeof STEPS)[number]["id"];
 
@@ -27,20 +31,27 @@ const STEP_OF: Record<ImportState["phase"], Step> = {
   preview: 3,
 };
 
-/** Upload a document, let the worker read it, check what it read, save. */
+/**
+ * Upload a document, let the worker read it, check what it read, save. With `update`, the document
+ * is a new version of that hospital's tariffs: it is bound to the hospital from the upload on, and
+ * the last step compares it with the current tariffs before publishing.
+ */
 export function TariffImportFlow({
   hospitals,
   unfinished,
   initialBookId,
+  update,
 }: {
   hospitals: { id: string; name: string }[];
   /** Earlier uploads that weren't saved, to pick up again. */
   unfinished: UnfinishedUpload[];
   initialBookId: string | null;
+  update?: UpdateTarget;
 }) {
-  const { state, start, open, reset } = useTariffImport(initialBookId);
+  const { state, start, open, reset } = useTariffImport(initialBookId, update?.hospital.id ?? null);
   const step = STEP_OF[state.phase];
   const fileName = "book" in state ? state.book?.fileName : undefined;
+  const steps = update ? UPDATE_STEPS : STEPS;
 
   return (
     // Fills the shell's panel below its 48px header (plus the panel's 8px top and bottom inset on large screens).
@@ -48,7 +59,7 @@ export function TariffImportFlow({
       {/* Equal side columns keep the steps centered and stop the breadcrumb short of them. */}
       <div className="grid h-12 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 border-b px-4">
         <p className="hidden truncate text-sm lg:block">
-          <span className="text-muted-foreground">Upload dokumen</span>
+          <span className="text-muted-foreground">{update ? `Perbarui tarif ${update.hospital.name}` : "Upload dokumen"}</span>
           {fileName && (
             <>
               <span className="mx-1.5 text-muted-foreground">/</span>
@@ -56,7 +67,7 @@ export function TariffImportFlow({
             </>
           )}
         </p>
-        <Steps current={step} />
+        <Steps steps={steps} current={step} />
       </div>
 
       <div className="flex-1 bg-muted/30 px-4 py-8 sm:px-8 lg:rounded-b-xl">
@@ -68,6 +79,8 @@ export function TariffImportFlow({
               uploading={state.phase === "uploading"}
               uploadError={state.phase === "idle" ? state.error : undefined}
               unfinished={unfinished}
+              description={update ? `Dokumen tarif terbaru ${update.hospital.name}. PDF, maksimal 50 MB.` : undefined}
+              before={update && <CurrentTariffs update={update} />}
             />
           )}
           {state.phase === "loading" && (
@@ -81,7 +94,7 @@ export function TariffImportFlow({
             <ExtractionFailed book={state.book} error={state.error} onRetried={() => open(state.bookId)} onReset={reset} />
           )}
           {state.phase === "preview" && (
-            <ImportPreview preview={state} hospitals={hospitals} onReprocess={() => open(state.book.id)} onDiscarded={reset} />
+            <ImportPreview preview={state} hospitals={hospitals} update={update} onReprocess={() => open(state.book.id)} onDiscarded={reset} />
           )}
         </div>
       </div>
@@ -89,10 +102,33 @@ export function TariffImportFlow({
   );
 }
 
-function Steps({ current }: { current: Step }) {
+/** What the hospital has now, so the person knows what the new document will replace. */
+function CurrentTariffs({ update }: { update: UpdateTarget }) {
+  const book = update.book;
+  return (
+    <div className="flex items-center gap-4 rounded-xl border bg-background px-5 py-3.5">
+      <FileText className="size-5 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-muted-foreground">Tarif saat ini</p>
+        {book ? (
+          <>
+            <p className="truncate text-sm font-semibold">{book.source}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+              Versi {book.version} · {bookYearLabel(book)} · {book.rows.toLocaleString("id-ID")} baris tarif
+            </p>
+          </>
+        ) : (
+          <p className="text-sm font-medium">Belum ada data tarif terbit</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Steps({ steps, current }: { steps: typeof STEPS | typeof UPDATE_STEPS; current: Step }) {
   return (
     <ol className="col-start-2 flex items-center" aria-label="Tahapan">
-      {STEPS.map((s, i) => (
+      {steps.map((s, i) => (
         <li key={s.id} className="flex items-center" aria-current={s.id === current ? "step" : undefined}>
           {i > 0 && <span aria-hidden className={cn("mx-1.5 h-px w-4 sm:mx-3 sm:w-12", s.id <= current ? "bg-primary" : "bg-border")} />}
           <span className="flex items-center gap-1.5">

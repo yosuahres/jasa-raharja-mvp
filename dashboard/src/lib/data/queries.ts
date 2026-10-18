@@ -78,7 +78,7 @@ export const getHospitals = shared("hospitals", async (supabase): Promise<Hospit
   const [hospitalsResult, booksResult, priceResult, locationResult] = await Promise.all([
     supabase
       .from("hospitals")
-      .select("id, name, ownership, city, province, address, partner, beds, hospital_facilities(*), hospital_staff(*)")
+      .select("id, name, ownership, city, province, address, beds, hospital_facilities(*), hospital_staff(*)")
       .order("name"),
     supabase
       .from("tariff_books")
@@ -238,19 +238,26 @@ export const getBookRowStats = cache(async (bookId: string): Promise<BookRowStat
   return { total: total.count ?? 0, needsCheck: flagged.count ?? 0 };
 });
 
-export type UnfinishedUpload = { id: string; source: string; status: "queued" | "extracting" | "review" | "failed"; createdAt: string };
+export type UnfinishedUpload = {
+  id: string;
+  source: string;
+  status: "queued" | "extracting" | "review" | "failed";
+  createdAt: string;
+  /** Set when it was uploaded as a new version of this hospital's tariffs. */
+  hospitalId: string | null;
+};
 
 /** Uploads not yet saved from their preview, newest first, so the upload page can offer to resume them. */
 export const getUnfinishedUploads = cache(async (): Promise<UnfinishedUpload[]> => {
   const supabase = await createClient();
-  const rows = must<{ id: string; source_file: string; status: UnfinishedUpload["status"]; created_at: string }[]>(
+  const rows = must<{ id: string; source_file: string; status: UnfinishedUpload["status"]; created_at: string; hospital_id: string | null }[]>(
     await supabase
       .from("tariff_books")
-      .select("id, source_file, status, created_at")
+      .select("id, source_file, status, created_at, hospital_id")
       .in("status", ["queued", "extracting", "review", "failed"])
       .order("created_at", { ascending: false })
       .limit(5),
     "tariff books",
   );
-  return rows.map((r) => ({ id: r.id, source: r.source_file, status: r.status, createdAt: r.created_at }));
+  return rows.map((r) => ({ id: r.id, source: r.source_file, status: r.status, createdAt: r.created_at, hospitalId: r.hospital_id }));
 });

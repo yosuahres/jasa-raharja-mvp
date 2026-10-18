@@ -9,8 +9,9 @@ import { useCatalog } from "@/components/catalog-provider";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CATEGORIES } from "@/lib/categories";
-import type { DetectedField } from "@/lib/data/types";
-import { findHospital } from "@/lib/hospital-match";
+import type { DetectedField, TariffBook } from "@/lib/data/types";
+import { findHospital, sameHospital } from "@/lib/hospital-match";
+import { bookYear } from "@/lib/tariff-book";
 import { cn } from "@/lib/utils";
 
 import { CategoryRows } from "./category-rows";
@@ -21,6 +22,14 @@ const EMPTY: SaveResult = { error: null };
 
 const count = (n: number) => n.toLocaleString("id-ID");
 
+/** The hospital a new version of tariffs is for, with what it has now to compare against. */
+export type UpdateTarget = {
+  hospital: { id: string; name: string };
+  book: TariffBook | null;
+  facilities: number;
+  staff: number;
+};
+
 /**
  * Step 3: what the extractor read, field by field with where it read it, and every tariff row by
  * category. Nothing is typed; saving creates or updates the hospital.
@@ -28,12 +37,15 @@ const count = (n: number) => n.toLocaleString("id-ID");
 export function ImportPreview({
   preview,
   hospitals,
+  update,
   onReprocess,
   onDiscarded,
 }: {
   preview: Preview;
   /** Hospitals already in the system, to say whether this one is new. */
   hospitals: { id: string; name: string }[];
+  /** Set when this is a new version of one hospital's tariffs: the save goes there, and the preview compares. */
+  update?: UpdateTarget;
   onReprocess: () => void;
   onDiscarded: () => void;
 }) {
@@ -44,7 +56,9 @@ export function ImportPreview({
   const [state, save, saving] = useActionState(saveImport, EMPTY);
   const [busy, startTransition] = useTransition();
   const [actionError, setActionError] = useState<string | null>(null);
-  const existing = findHospital(hospitals, profile.name?.value);
+  const existing = update?.hospital ?? findHospital(hospitals, profile.name?.value);
+  // The document names another hospital than the one it is being saved to: worth a look before publishing.
+  const otherName = update && profile.name && !sameHospital(update.hospital.name, profile.name.value) ? profile.name.value : null;
   // Saved now, or earlier when an already-saved upload is reopened.
   const savedTo = state.hospitalId ?? (book.status === "published" ? book.hospitalId : null);
   const error = state.error ?? actionError;
@@ -63,9 +77,10 @@ export function ImportPreview({
   return (
     <form action={save}>
       <input type="hidden" name="book_id" value={book.id} />
+      {update && <input type="hidden" name="hospital_id" value={update.hospital.id} />}
 
       <StepHeader
-        title="Periksa & simpan"
+        title={update ? "Bandingkan & terbitkan" : "Periksa & simpan"}
         status={savedTo ? { label: "Tersimpan", tone: "success" } : undefined}
         description={
           savedTo
@@ -84,7 +99,7 @@ export function ImportPreview({
               </Button>
               <Button type="submit" size="sm" disabled={busy || saving}>
                 {saving && <Loader2 className="animate-spin motion-reduce:animate-none" />}
-                {saving ? "Menyimpan…" : "Simpan"}
+                {saving ? "Menyimpan…" : update ? "Terbitkan" : "Simpan"}
               </Button>
             </>
           )
@@ -108,6 +123,20 @@ export function ImportPreview({
         {error && <Notice tone="error">{error}</Notice>}
         {savedTo ? (
           <Notice tone="success">Tarif dari dokumen ini sekarang menjadi tarif terbaru {hospitalName}.</Notice>
+        ) : update ? (
+          <Notice tone={otherName ? "warning" : "info"}>
+            {otherName ? (
+              <>
+                Dokumen ini menyebut <span className="font-medium">{otherName}</span>, bukan {update.hospital.name}. Periksa dulu sebelum menerbitkan.
+              </>
+            ) : update.book ? (
+              <>
+                Menggantikan tarif versi <span className="font-medium text-foreground">{update.book.version}</span> {update.hospital.name}. Versi lama tetap tersimpan sebagai riwayat.
+              </>
+            ) : (
+              <>Menjadi tarif pertama {update.hospital.name}.</>
+            )}
+          </Notice>
         ) : existing ? (
           <Notice tone="info">
             Sudah terdaftar sebagai <span className="font-medium text-foreground">{existing.name}</span>. Tarif dari dokumen ini menjadi tarif terbarunya.
@@ -119,6 +148,8 @@ export function ImportPreview({
         {book.scannedPages.length > 0 && <Notice tone="warning">{count(book.scannedPages.length)} halaman scan dilewati.</Notice>}
       </div>
 
+      {update && !savedTo && <Comparison update={update} book={book} totalRows={totalRows} />}
+
       <Section title="Rumah sakit">
         <Fields>
           <Field label="Nama" field={profile.name} />
@@ -127,7 +158,6 @@ export function ImportPreview({
           <Field label="Tahun tarif" field={profile.year} format={String} />
           <Field label="Kepemilikan" field={profile.ownership} />
           <Field label="Alamat" field={profile.address} />
-          <Field label="Mitra PKS" field={profile.partner} format={(p) => (p ? "Ya" : "Tidak")} />
         </Fields>
       </Section>
 
@@ -150,6 +180,72 @@ export function ImportPreview({
         </div>
       </Section>
     </form>
+  );
+}
+
+/** What changes if the new document is published: year, rows by category, facilities and specialists. */
+function Comparison({ update, book, totalRows }: { update: UpdateTarget; book: Preview["book"]; totalRows: number }) {
+  const current = update.book;
+  const currentYear = bookYear(current)?.toString() ?? null;
+  const newYear = book.profile.year ? String(book.profile.year.value) : null;
+  const categories = CATEGORIES.filter((c) => (current?.categories[c.id] ?? 0) > 0 || (book.categoryCounts[c.id] ?? 0) > 0);
+
+  return (
+    <Section title="Perbandingan dengan tarif saat ini">
+      <div className="overflow-hidden rounded-lg border bg-background">
+        <div className="grid grid-cols-[minmax(0,1fr)_6rem_6rem_5rem] gap-3 border-b bg-muted/50 px-4 py-3 text-xs font-medium text-muted-foreground">
+          <span>Data</span>
+          <span className="text-right">Saat ini{current && <span className="block font-normal">v{current.version}</span>}</span>
+          <span className="text-right">Dokumen baru</span>
+          <span className="text-right">Selisih</span>
+        </div>
+        <dl className="divide-y">
+          <CompareLine label="Tahun tarif" before={currentYear} after={newYear} />
+          <CompareLine label="Baris tarif" before={current?.rows ?? 0} after={totalRows} strong />
+          {categories.map((c) => (
+            <CompareLine key={c.id} label={c.label} before={current?.categories[c.id] ?? 0} after={book.categoryCounts[c.id] ?? 0} indent />
+          ))}
+          <CompareLine label="Fasilitas terdeteksi" before={update.facilities} after={book.detectedFacilities.length} />
+          <CompareLine label="Tenaga medis terdeteksi" before={update.staff} after={book.detectedSpecialties.length} />
+        </dl>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Fasilitas dan tenaga medis yang sudah tercatat tidak dihapus; yang baru terdeteksi ditambahkan.
+      </p>
+    </Section>
+  );
+}
+
+function CompareLine({
+  label,
+  before,
+  after,
+  strong,
+  indent,
+}: {
+  label: string;
+  before: number | string | null;
+  after: number | string | null;
+  strong?: boolean;
+  indent?: boolean;
+}) {
+  const numeric = typeof before === "number" && typeof after === "number";
+  const delta = numeric ? after - before : null;
+  const show = (v: number | string | null) => (v === null ? "—" : typeof v === "number" ? count(v) : v);
+  return (
+    <div className={cn("grid grid-cols-[minmax(0,1fr)_6rem_6rem_5rem] gap-3 px-4 py-2.5 text-sm", strong && "font-medium")}>
+      <dt className={cn("truncate", indent ? "pl-4 text-muted-foreground" : "")}>{label}</dt>
+      <dd className="text-right text-muted-foreground tabular-nums">{show(before)}</dd>
+      <dd className="text-right tabular-nums">{show(after)}</dd>
+      <dd
+        className={cn(
+          "text-right text-xs tabular-nums",
+          delta === null || delta === 0 ? "text-muted-foreground" : delta > 0 ? "text-tier-a-ink" : "text-tier-c-ink",
+        )}
+      >
+        {delta === null ? (before !== after && before !== null ? "berubah" : "") : delta === 0 ? "sama" : `${delta > 0 ? "+" : "−"}${count(Math.abs(delta))}`}
+      </dd>
+    </div>
   );
 }
 

@@ -7,6 +7,7 @@ import type { UnfinishedUpload } from "@/lib/data/queries";
 import { cn } from "@/lib/utils";
 
 import { Notice, StepHeader } from "./step-layout";
+import { uploadHref } from "./upload-href";
 
 // The storage bucket's limit (supabase/schema.sql).
 const MAX_BYTES = 50 * 1024 * 1024;
@@ -31,12 +32,17 @@ export function UploadForm({
   uploading,
   uploadError,
   unfinished,
+  description = "PDF, maksimal 50 MB.",
+  before,
 }: {
   onStart: (file: File) => void;
   uploading: boolean;
   /** Why the last upload didn't go through. */
   uploadError?: string;
   unfinished: UnfinishedUpload[];
+  description?: React.ReactNode;
+  /** Shown above the dropzone: what the upload is for. */
+  before?: React.ReactNode;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -63,7 +69,7 @@ export function UploadForm({
       <StepHeader
         title="Pilih dokumen"
         status={file && !shownError ? { label: "Siap", tone: "success" } : undefined}
-        description="PDF, maksimal 50 MB."
+        description={description}
         actions={
           <Button size="sm" disabled={!file || uploading} onClick={() => file && onStart(file)}>
             {uploading && <Loader2 className="animate-spin motion-reduce:animate-none" />}
@@ -71,6 +77,8 @@ export function UploadForm({
           </Button>
         }
       />
+
+      {before && <div className="mb-4">{before}</div>}
 
       <input
         ref={inputRef}
@@ -156,7 +164,7 @@ export function UploadForm({
           <ul className="divide-y overflow-hidden rounded-lg border bg-background">
             {unfinished.map((u) => (
               <li key={u.id}>
-                <Link href={`/input?tarif=${u.id}`} className="flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40">
+                <Link href={uploadHref(u)} className="flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40">
                   <FileText className="size-4 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 flex-1 truncate">{u.source}</span>
                   <span className={cn("shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium", STATUS[u.status].className)}>

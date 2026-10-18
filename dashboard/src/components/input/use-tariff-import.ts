@@ -98,8 +98,11 @@ const loadPreview = async (book: ImportBook): Promise<ImportPreview> => {
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Upload → extraction by the worker → preview, backed by Supabase. `?tarif=<id>` resumes an upload. */
-export function useTariffImport(initialBookId: string | null) {
+/**
+ * Upload → extraction by the worker → preview, backed by Supabase. `?tarif=<id>` resumes an upload.
+ * With `hospitalId`, the upload is that hospital's from the start: a new version of its tariffs.
+ */
+export function useTariffImport(initialBookId: string | null, hospitalId: string | null = null) {
   const router = useRouter();
   const pathname = usePathname();
   const [state, setState] = useState<ImportState>(initialBookId ? { phase: "loading" } : { phase: "idle" });
@@ -157,7 +160,7 @@ export function useTariffImport(initialBookId: string | null) {
 
         const { data, error } = await supabase
           .from("tariff_books")
-          .insert({ source_file: file.name, storage_path: path })
+          .insert({ source_file: file.name, storage_path: path, hospital_id: hospitalId })
           .select(BOOK_SELECT)
           .single<BookRow>();
         if (error) throw new Error(error.message);
@@ -173,7 +176,7 @@ export function useTariffImport(initialBookId: string | null) {
         setState({ phase: "idle", error: errorText(error) });
       }
     },
-    [setBookParam],
+    [setBookParam, hospitalId],
   );
 
   /** Back to an empty upload. */

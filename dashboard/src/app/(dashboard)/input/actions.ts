@@ -46,11 +46,14 @@ export async function saveImport(_previous: SaveResult, data: FormData): Promise
   const profile = book.detected_profile;
   const name = profile.name?.value;
   const year = profile.year?.value ?? null;
-  if (!name) return { error: "Nama rumah sakit tidak terbaca dari dokumen." };
 
-  const { data: hospitals, error: listError } = await supabase.from("hospitals").select("id, name, partner");
+  const { data: hospitals, error: listError } = await supabase.from("hospitals").select("id, name");
   if (listError) return { error: saveError(listError) };
-  const existing = findHospital(hospitals, name);
+  // A new version of one hospital's tariffs goes to that hospital; otherwise the document's name decides.
+  const target = text(data, "hospital_id");
+  const existing = target ? hospitals.find((h) => h.id === target) : findHospital(hospitals, name);
+  if (target && !existing) return { error: "Rumah sakit ini tidak ditemukan." };
+  if (!existing && !name) return { error: "Nama rumah sakit tidak terbaca dari dokumen." };
 
   // A newer document updates what it prints; what it doesn't print keeps its earlier value.
   const fields = {
@@ -58,14 +61,13 @@ export async function saveImport(_previous: SaveResult, data: FormData): Promise
     ...(profile.province ? { province: profile.province.value } : {}),
     ...(profile.address ? { address: profile.address.value } : {}),
     ...(profile.ownership ? { ownership: profile.ownership.value } : {}),
-    partner: Boolean(profile.partner?.value) || Boolean(existing?.partner),
   };
   let hospitalId = existing?.id;
   if (hospitalId) {
     const { error } = await supabase.from("hospitals").update(fields).eq("id", hospitalId);
     if (error) return { error: saveError(error) };
   } else {
-    hospitalId = await uniqueId(supabase, "hospitals", slugify(name));
+    hospitalId = await uniqueId(supabase, "hospitals", slugify(name ?? ""));
     const { error } = await supabase.from("hospitals").insert({ id: hospitalId, name, ...fields });
     if (error) return { error: saveError(error) };
   }
