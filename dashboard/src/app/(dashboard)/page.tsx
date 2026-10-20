@@ -74,7 +74,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
 
   if (ranked.length === 0) {
     return (
-      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-8">
+      <div className="w-full px-4 py-6 sm:px-8">
         <p className="rounded-xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">Belum ada data</p>
       </div>
     );
@@ -82,7 +82,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
 
   // No title of its own: the app header names the page.
   return (
-    <div className="mx-auto grid w-full max-w-[96rem] gap-4 px-4 py-4 sm:px-6 lg:grid-cols-12">
+    <div className="grid w-full gap-4 px-4 py-4 sm:px-6 lg:grid-cols-12">
       {/* ------------------------------------------------------------ city and loket chips, over everything */}
       <div className="flex flex-wrap gap-2 lg:col-span-12">
         <Chips current={city} options={[{ value: "", label: "Semua kota" }, ...cities.map((c) => ({ value: c, label: c }))]} href={(v) => chipHref(v, loket)} />
