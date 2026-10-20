@@ -19,27 +19,44 @@ const STATUS: Record<UnfinishedUpload["status"], { label: string; className: str
   failed: { label: "Gagal dibaca", className: "bg-tier-c-soft text-tier-c-ink" },
 };
 
-const isPdf = (file: File) => file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+export type FileType = "pdf" | "sheet";
+
+const FILE: Record<FileType, { accept: string; test: (file: File) => boolean; label: string; description: string }> = {
+  pdf: {
+    accept: "application/pdf,.pdf",
+    test: (file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name),
+    label: "PDF",
+    description: "PDF, maksimal 50 MB.",
+  },
+  sheet: {
+    accept: ".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    test: (file) => /\.xlsx?$/i.test(file.name),
+    label: "lembar kerja Excel",
+    description: "Lembar kerja .xls atau .xlsx dengan kolom KODE_RUMAHSAKIT, NAMA_RS, KODE_LOKET, NAMA_LOKET.",
+  },
+};
 
 const fileSize = (bytes: number) =>
   bytes >= 1024 * 1024
     ? `${(bytes / 1024 / 1024).toLocaleString("id-ID", { maximumFractionDigits: 1 })} MB`
     : `${(bytes / 1024).toLocaleString("id-ID", { maximumFractionDigits: 0 })} KB`;
 
-/** Step 1: drop or pick a PDF, check it's the right one, then continue to upload it. */
+/** The upload step: drop or pick a file of the right type, check it's the right one, then continue to upload it. */
 export function UploadForm({
   onStart,
   uploading,
   uploadError,
-  unfinished,
-  description = "PDF, maksimal 50 MB.",
+  unfinished = [],
+  fileType = "pdf",
+  description = FILE[fileType].description,
   before,
 }: {
   onStart: (file: File) => void;
   uploading: boolean;
   /** Why the last upload didn't go through. */
   uploadError?: string;
-  unfinished: UnfinishedUpload[];
+  unfinished?: UnfinishedUpload[];
+  fileType?: FileType;
   description?: React.ReactNode;
   /** Shown above the dropzone: what the upload is for. */
   before?: React.ReactNode;
@@ -51,7 +68,7 @@ export function UploadForm({
 
   const pick = (next: File | undefined) => {
     if (!next) return;
-    if (!isPdf(next)) return setError(`"${next.name}" bukan PDF.`);
+    if (!FILE[fileType].test(next)) return setError(`"${next.name}" bukan ${FILE[fileType].label}.`);
     if (next.size > MAX_BYTES) return setError(`"${next.name}" lebih dari 50 MB.`);
     setError(null);
     setFile(next);
@@ -83,7 +100,7 @@ export function UploadForm({
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf,.pdf"
+        accept={FILE[fileType].accept}
         className="sr-only"
         tabIndex={-1}
         onChange={(e) => {
