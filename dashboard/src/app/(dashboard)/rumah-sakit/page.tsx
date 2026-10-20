@@ -18,6 +18,7 @@ const toRow = ({ hospital, tipe, price, services, scores }: HospitalSummary): Ho
   name: hospital.name,
   city: hospital.city,
   ownership: hospital.ownership,
+  loket: hospital.jasaRaharja?.loketName ?? "",
   tipe,
   price: price && hospital.priceIndex ? { ...price, ratio: hospital.priceIndex.ratio } : null,
   services: { ...services, score: compositeOf(scores) },

@@ -361,6 +361,20 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
             <Section title="Profil" />
             <CompareRow label="Kepemilikan" columns={columns} render={(c) => c.hospital.ownership ?? "—"} />
             <CompareRow label="Kota" columns={columns} render={(c) => joinFacts(c.hospital.city, c.hospital.province) || "—"} />
+            <CompareRow
+              label="Loket Jasa Raharja"
+              columns={columns}
+              render={(c) =>
+                c.hospital.jasaRaharja ? (
+                  <span>
+                    {c.hospital.jasaRaharja.loketName}
+                    <span className="block text-xs text-muted-foreground tabular-nums">kode RS {c.hospital.jasaRaharja.code}</span>
+                  </span>
+                ) : (
+                  <Muted>Belum terhubung</Muted>
+                )
+              }
+            />
 
             <Section title="Fasilitas" />
             {data.catalog.facilities.map((f) => (

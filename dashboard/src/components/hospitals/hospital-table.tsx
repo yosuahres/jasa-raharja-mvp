@@ -81,6 +81,7 @@ const facetsOf = (rows: HospitalRow[]): Facet[] => {
 
   return [
     { id: "kota", label: "Kota", choices: printed("kota") },
+    { id: "loket", label: "Loket", choices: printed("loket") },
     { id: "tipe", label: "Tipe", choices: TIPES.map((t) => ({ value: t, label: `Tipe ${t}`, dot: TIPE_DOT[t], count: tipe.get(t) ?? 0 })) },
     { id: "kepemilikan", label: "Kepemilikan", choices: printed("kepemilikan") },
     {
@@ -98,7 +99,7 @@ const facetsOf = (rows: HospitalRow[]): Facet[] => {
 
 /**
  * The hospital list: search, sort, filters and column settings above a grid table, paged below.
- * Rows come in ranking order. Search, filters and sort follow the URL (`q`, `kota`, `tipe`, `milik`,
+ * Rows come in ranking order. Search, filters and sort follow the URL (`q`, `kota`, `loket`, `tipe`, `milik`,
  * `tarif`, `urut`); column order, visibility and widths are kept in this browser.
  * Render inside CompareSelectionProvider.
  */
@@ -331,6 +332,8 @@ function HospitalCell({ column, row }: { column: ColumnId; row: HospitalRow }) {
       return row.tipe ? <TipeBadge tipe={row.tipe} /> : <Missing />;
     case "kota":
       return row.city ? <span className="block truncate">{row.city}</span> : <Missing />;
+    case "loket":
+      return row.loket ? <span className="block truncate">{row.loket}</span> : <Missing />;
     case "kepemilikan":
       return row.ownership ? <span className="block truncate">{row.ownership}</span> : <Missing />;
   }

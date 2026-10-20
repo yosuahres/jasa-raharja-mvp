@@ -7,7 +7,7 @@ import type { CategoryId } from "@/lib/categories";
 import { createClient } from "@/lib/supabase/server";
 
 import { LINE_SELECT, type LineRow, searchWords, toLine } from "./rows";
-import type { Catalog, CategoryCounts, Dataset, Hospital, PricedTreatment, TariffBook, TariffLine, Treatment, TreatmentLine } from "./types";
+import type { Catalog, CategoryCounts, Dataset, Hospital, JrHospital, PricedTreatment, TariffBook, TariffLine, Treatment, TreatmentLine } from "./types";
 
 const must = <T>(result: { data: T | null; error: { message: string } | null }, what: string): T => {
   if (result.error) throw new Error(`Could not load ${what}: ${result.error.message}`);
@@ -41,10 +41,23 @@ export const getCatalog = shared("catalog", async (supabase): Promise<Catalog> =
   return { facilities: must(facilities, "facilities"), specialties: must(specialties, "specialties") };
 });
 
-type HospitalRow = Omit<Hospital, "location" | "facilities" | "staff" | "priceIndex" | "tariffBook" | "previousBook"> & {
+type JrRow = { code: string; name: string; loket_code: string; loket_name: string };
+
+const toJr = (row: JrRow | null): JrHospital | null =>
+  row ? { code: row.code, name: row.name, loketCode: row.loket_code, loketName: row.loket_name } : null;
+
+type HospitalRow = Omit<Hospital, "location" | "facilities" | "staff" | "priceIndex" | "tariffBook" | "previousBook" | "jasaRaharja"> & {
   hospital_facilities: { facility_id: string; qty: number | null; available_24h: boolean | null }[];
   hospital_staff: { specialty_id: string; headcount: number | null; on_call_24h: boolean | null }[];
+  jr_hospitals: JrRow | null;
 };
+
+/** Jasa Raharja's list of partner hospitals, by name. Empty until the sheet is uploaded. */
+export const getJrHospitals = shared("jr-hospitals", async (supabase): Promise<JrHospital[]> => {
+  const result = await supabase.from("jr_hospitals").select("code, name, loket_code, loket_name").order("name").returns<JrRow[]>();
+  // The table arrives with migrations/010; until it exists, nothing is linked.
+  return result.error ? [] : (result.data ?? []).flatMap((r) => toJr(r) ?? []);
+});
 
 type PriceIndexRow = { hospital_id: string; price_index: number; compared_rows: number };
 
@@ -78,8 +91,10 @@ export const getHospitals = shared("hospitals", async (supabase): Promise<Hospit
   const [hospitalsResult, booksResult, priceResult, locationResult] = await Promise.all([
     supabase
       .from("hospitals")
-      .select("id, name, ownership, city, province, address, beds, hospital_facilities(*), hospital_staff(*)")
-      .order("name"),
+      .select("id, name, ownership, city, province, address, beds, hospital_facilities(*), hospital_staff(*), jr_hospitals(code, name, loket_code, loket_name)")
+      .order("name")
+      // jr_code points at one row, so the embed is an object; the client's own guess is an array.
+      .returns<HospitalRow[]>(),
     supabase
       .from("tariff_books")
       .select("id, hospital_id, version, valid_from, valid_to, source_file, category_counts")
@@ -95,13 +110,14 @@ export const getHospitals = shared("hospitals", async (supabase): Promise<Hospit
   // Likewise the coordinates (migrations/008): until they exist, no hospital has a pin.
   const locations = locationResult.error ? [] : (locationResult.data ?? []);
 
-  return hospitals.map(({ hospital_facilities, hospital_staff, ...h }) => {
+  return hospitals.map(({ hospital_facilities, hospital_staff, jr_hospitals, ...h }) => {
     // Newest first, so a hospital's first two are its current and previous ones.
     const [current, previous] = books.filter((b) => b.hospital_id === h.id);
     const price = prices.find((p) => p.hospital_id === h.id);
     const location = locations.find((l) => l.id === h.id);
     return {
       ...h,
+      jasaRaharja: toJr(jr_hospitals),
       location: location?.lat != null && location.lng != null ? { lat: location.lat, lng: location.lng } : null,
       facilities: hospital_facilities.map((f) => ({ facilityId: f.facility_id, qty: f.qty, available24h: f.available_24h })),
       staff: hospital_staff.map((s) => ({ specialtyId: s.specialty_id, headcount: s.headcount, onCall24h: s.on_call_24h })),

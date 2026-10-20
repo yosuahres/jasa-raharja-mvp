@@ -14,6 +14,7 @@ import {
   MapPin,
   RefreshCw,
   Shapes,
+  Store,
   Trophy,
 } from "lucide-react";
 import Link from "next/link";
@@ -100,6 +101,18 @@ export function ProfileSidebar({
       </Section>
 
       <Section title="Profil">
+        <Field icon={Store} label="Loket">
+          {hospital.jasaRaharja ? (
+            <>
+              {hospital.jasaRaharja.loketName}
+              <span className="block text-xs text-muted-foreground tabular-nums">kode RS {hospital.jasaRaharja.code}</span>
+            </>
+          ) : (
+            <Link href="/input?jenis=daftar-rs&tahap=periksa" className="text-tier-c-ink hover:underline">
+              Belum terhubung ke daftar RS Jasa Raharja
+            </Link>
+          )}
+        </Field>
         <Field icon={Landmark} label="Kepemilikan">
           {hospital.ownership}
         </Field>

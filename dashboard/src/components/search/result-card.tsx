@@ -24,7 +24,7 @@ export function ResultCard({ result: r, treatmentName }: { result: SearchResult;
           </Link>
           <TierBadge tier={r.tier} />
         </div>
-        <p className="mt-1 truncate text-sm text-muted-foreground">{joinFacts(r.city, r.tipe && `Tipe ${r.tipe}`)}</p>
+        <p className="mt-1 truncate text-sm text-muted-foreground">{joinFacts(r.city, r.tipe && `Tipe ${r.tipe}`, r.loket)}</p>
         {!sameName(r.rowName, treatmentName) && <p className="mt-2 line-clamp-2 text-xs text-foreground/80">{r.rowName}</p>}
       </div>
 

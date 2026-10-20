@@ -14,6 +14,8 @@ export type HospitalRow = {
   /** Empty when the document doesn't print it. */
   city: string;
   ownership: Hospital["ownership"];
+  /** The Jasa Raharja office that handles its claims; empty until linked to the list. */
+  loket: string;
   tipe: Tipe | null;
   /** `ratio` is its prices against other hospitals' median: lower is cheaper. */
   price: { level: PriceLevel; reason: string; ratio: number } | null;
@@ -27,12 +29,13 @@ export type HospitalRow = {
 
 // ------------------------------------------------------------------ columns
 
-export type ColumnId = "nama" | "kota" | "kepemilikan" | "harga" | "layanan" | "tarif" | "tipe";
+export type ColumnId = "nama" | "kota" | "loket" | "kepemilikan" | "harga" | "layanan" | "tarif" | "tipe";
 
 // One value per cell, one line per row, every field its own column — the CRM tables' grid.
 export const COLUMNS: ColumnDef<ColumnId>[] = [
   { id: "nama", label: "Rumah sakit", required: true, width: 260 },
   { id: "kota", label: "Kota", width: 150 },
+  { id: "loket", label: "Loket", width: 220 },
   { id: "kepemilikan", label: "Kepemilikan", width: 140 },
   { id: "tipe", label: "Tipe", width: 100 },
   { id: "harga", label: "Harga", width: 120 },
@@ -42,19 +45,19 @@ export const COLUMNS: ColumnDef<ColumnId>[] = [
 
 export const DEFAULT_LAYOUT: ColumnLayout<ColumnId> = {
   order: COLUMNS.map((c) => c.id),
-  visible: { nama: true, kota: true, kepemilikan: true, tipe: true, harga: true, layanan: true, tarif: true },
+  visible: { nama: true, kota: true, loket: true, kepemilikan: true, tipe: true, harga: true, layanan: true, tarif: true },
 };
 
 // ------------------------------------------------------------------ filters
 
-export type FilterId = "kota" | "tipe" | "kepemilikan" | "tarif";
+export type FilterId = "kota" | "loket" | "tipe" | "kepemilikan" | "tarif";
 
 /** Ticked values per filter; an empty list doesn't filter. */
 export type Filters = Record<FilterId, string[]>;
 
-export const FILTER_IDS: FilterId[] = ["kota", "tipe", "kepemilikan", "tarif"];
+export const FILTER_IDS: FilterId[] = ["kota", "loket", "tipe", "kepemilikan", "tarif"];
 
-export const NO_FILTERS: Filters = { kota: [], tipe: [], kepemilikan: [], tarif: [] };
+export const NO_FILTERS: Filters = { kota: [], loket: [], tipe: [], kepemilikan: [], tarif: [] };
 
 /** The value for "the document doesn't say" in the Kota and Kepemilikan filters. */
 export const NOT_STATED = "-";
@@ -72,6 +75,7 @@ export const TARIFF_DOT: Record<TariffStatus, string> = {
 
 const FILTER_VALUE: Record<FilterId, (row: HospitalRow) => string> = {
   kota: (r) => r.city || NOT_STATED,
+  loket: (r) => r.loket || NOT_STATED,
   tipe: (r) => r.tipe ?? "",
   kepemilikan: (r) => r.ownership ?? NOT_STATED,
   tarif: (r) => r.tariff,
@@ -94,6 +98,7 @@ export type SortKey = ColumnId;
 export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "nama", label: "Nama" },
   { value: "kota", label: "Kota" },
+  { value: "loket", label: "Loket" },
   { value: "tipe", label: "Tipe" },
   { value: "harga", label: "Harga" },
   { value: "layanan", label: "Layanan" },
@@ -107,6 +112,7 @@ const TIPE_ORDER: Record<Tipe, number> = { A: 0, B: 1, C: 2, D: 3 };
 const SORT_VALUE: Record<SortKey, (row: HospitalRow) => string | number | null> = {
   nama: (r) => r.name,
   kota: (r) => r.city || null,
+  loket: (r) => r.loket || null,
   tipe: (r) => (r.tipe ? TIPE_ORDER[r.tipe] : null),
   harga: (r) => r.price?.ratio ?? null,
   layanan: (r) => -r.services.score,
@@ -139,7 +145,7 @@ export const sortRows = (rows: HospitalRow[], sort: SortState<SortKey> | null) =
 /** Search, filters and sort as the URL carries them, so a filtered list can be shared. */
 export type HospitalQuery = { search: string; filters: Filters; sort: SortState<SortKey> | null };
 
-const PARAM: Record<FilterId, string> = { kota: "kota", tipe: "tipe", kepemilikan: "milik", tarif: "tarif" };
+const PARAM: Record<FilterId, string> = { kota: "kota", loket: "loket", tipe: "tipe", kepemilikan: "milik", tarif: "tarif" };
 
 const ALLOWED: Partial<Record<FilterId, readonly string[]>> = {
   tipe: TIPES,

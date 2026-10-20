@@ -8,7 +8,7 @@ import { SHARED_DATA_TAG } from "@/lib/data/queries";
 import type { Detection, DetectedProfile } from "@/lib/data/types";
 import { wakeExtractor } from "@/lib/extractor";
 import { geocodeHospital } from "@/lib/geocode";
-import { findHospital } from "@/lib/hospital-match";
+import { findHospital, matchJrHospital } from "@/lib/hospital-match";
 import { createClient } from "@/lib/supabase/server";
 import { TARIFF_BUCKET } from "@/lib/supabase/env";
 
@@ -47,7 +47,7 @@ export async function saveImport(_previous: SaveResult, data: FormData): Promise
   const name = profile.name?.value;
   const year = profile.year?.value ?? null;
 
-  const { data: hospitals, error: listError } = await supabase.from("hospitals").select("id, name");
+  const { data: hospitals, error: listError } = await supabase.from("hospitals").select("id, name, jr_code");
   if (listError) return { error: saveError(listError) };
   // A new version of one hospital's tariffs goes to that hospital; otherwise the document's name decides.
   const target = text(data, "hospital_id");
@@ -55,12 +55,20 @@ export async function saveImport(_previous: SaveResult, data: FormData): Promise
   if (target && !existing) return { error: "Rumah sakit ini tidak ditemukan." };
   if (!existing && !name) return { error: "Nama rumah sakit tidak terbaca dari dokumen." };
 
+  // Its row in Jasa Raharja's list: the one picked in the preview; without a pick, the one its name matches.
+  const { data: jrList } = await supabase.from("jr_hospitals").select("code, name");
+  const jrCode = data.has("jr_code")
+    ? text(data, "jr_code") || null
+    : (matchJrHospital({ name: existing?.name ?? name ?? "", city: profile.city?.value ?? "" }, jrList ?? [])?.code ?? null);
+
   // A newer document updates what it prints; what it doesn't print keeps its earlier value.
   const fields = {
     ...(profile.city ? { city: profile.city.value } : {}),
     ...(profile.province ? { province: profile.province.value } : {}),
     ...(profile.address ? { address: profile.address.value } : {}),
     ...(profile.ownership ? { ownership: profile.ownership.value } : {}),
+    // A pick in the preview always applies, even "none"; a name match only fills an empty link.
+    ...(data.has("jr_code") ? { jr_code: jrCode } : jrCode && !existing?.jr_code ? { jr_code: jrCode } : {}),
   };
   let hospitalId = existing?.id;
   if (hospitalId) {

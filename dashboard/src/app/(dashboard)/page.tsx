@@ -48,8 +48,17 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   // A city the documents name, or "" for every hospital — also what an unknown `kota` means.
   const city = cities.find((c) => c === first(params.kota)) ?? "";
 
+  const lokets = [...new Set(data.hospitals.flatMap((h) => (h.jasaRaharja ? [h.jasaRaharja.loketName] : [])))].sort();
+  const loket = lokets.find((l) => l === first(params.loket)) ?? "";
+  const chipHref = (kota: string, loketName: string) => {
+    const q = new URLSearchParams();
+    if (kota) q.set("kota", kota);
+    if (loketName) q.set("loket", loketName);
+    return q.size ? `/?${q}` : "/";
+  };
+
   const ranked = allSummaries(data).sort(byRank);
-  const shown = ranked.filter((s) => !city || s.hospital.city === city);
+  const shown = ranked.filter((s) => (!city || s.hospital.city === city) && (!loket || s.hospital.jasaRaharja?.loketName === loket));
   const published = shown.filter((s) => s.hospital.tariffBook);
   const rows = published.reduce((sum, s) => sum + (s.hospital.tariffBook?.rows ?? 0), 0);
   const placed = shown.filter((s) => s.hospital.location).length;
@@ -74,19 +83,16 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   // No title of its own: the app header names the page.
   return (
     <div className="mx-auto grid w-full max-w-[96rem] gap-4 px-4 py-4 sm:px-6 lg:grid-cols-12">
-      {/* ------------------------------------------------------------ city chips, over everything */}
-      <div className="flex flex-wrap gap-1 self-start rounded-lg bg-muted/60 p-1 text-xs lg:col-span-12">
-        {[{ value: "", label: "Semua kota" }, ...cities.map((c) => ({ value: c, label: c }))].map((o) => (
-          <Link
-            key={o.value}
-            href={o.value ? `/?kota=${encodeURIComponent(o.value)}` : "/"}
-            scroll={false}
-            aria-current={city === o.value ? "true" : undefined}
-            className="rounded-md px-2.5 py-1 font-medium text-muted-foreground transition-colors hover:text-foreground aria-[current=true]:bg-background aria-[current=true]:text-foreground aria-[current=true]:shadow-xs"
-          >
-            {o.label}
-          </Link>
-        ))}
+      {/* ------------------------------------------------------------ city and loket chips, over everything */}
+      <div className="flex flex-wrap gap-2 lg:col-span-12">
+        <Chips current={city} options={[{ value: "", label: "Semua kota" }, ...cities.map((c) => ({ value: c, label: c }))]} href={(v) => chipHref(v, loket)} />
+        {lokets.length > 0 && (
+          <Chips
+            current={loket}
+            options={[{ value: "", label: "Semua loket" }, ...lokets.map((l) => ({ value: l, label: l.replace(/^LOKET\s+/i, "") }))]}
+            href={(v) => chipHref(city, v)}
+          />
+        )}
       </div>
 
       {/* ------------------------------------------------------------ map, with the full page a click away */}
@@ -122,7 +128,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
 
         <div className="rounded-xl border px-4 py-3">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="text-lg font-semibold">{city || "Semua kota"}</span>
+            <span className="text-lg font-semibold">{[city, loket.replace(/^LOKET\s+/i, "")].filter(Boolean).join(" · ") || "Semua kota"}</span>
             <span className="text-xs text-muted-foreground">{published.length} dokumen terbit</span>
           </div>
           <span className="text-sm text-muted-foreground">{num(rows)} baris tarif</span>
@@ -254,6 +260,25 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
           <p className="text-sm text-muted-foreground">{placed} dari {shown.length} rumah sakit ada di peta</p>
         </div>
       </Link>
+    </div>
+  );
+}
+
+/** One row of chips: the chosen one sits raised on the strip. */
+function Chips({ current, options, href }: { current: string; options: { value: string; label: string }[]; href: (value: string) => string }) {
+  return (
+    <div className="flex flex-wrap gap-1 self-start rounded-lg bg-muted/60 p-1 text-xs">
+      {options.map((o) => (
+        <Link
+          key={o.value}
+          href={href(o.value)}
+          scroll={false}
+          aria-current={current === o.value ? "true" : undefined}
+          className="rounded-md px-2.5 py-1 font-medium text-muted-foreground transition-colors hover:text-foreground aria-[current=true]:bg-background aria-[current=true]:text-foreground aria-[current=true]:shadow-xs"
+        >
+          {o.label}
+        </Link>
+      ))}
     </div>
   );
 }

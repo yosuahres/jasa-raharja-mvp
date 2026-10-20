@@ -97,6 +97,15 @@ export type TariffBook = {
   rows: number;
 };
 
+/** One row of Jasa Raharja's list of partner hospitals: the hospital and the office (loket) that handles its claims. */
+export type JrHospital = {
+  code: string;
+  /** As the list prints it, with its regency or city: "RSUD SOEDONO, KOTA MADIUN". */
+  name: string;
+  loketCode: string;
+  loketName: string;
+};
+
 /** A profile field the extractor read, with where it read it. */
 export type DetectedField<T> = { value: T; source: string };
 
@@ -123,6 +132,8 @@ export type Hospital = {
   province: string;
   address: string;
   beds: number;
+  /** Its row in Jasa Raharja's list, with the office that handles its claims; null until matched. */
+  jasaRaharja: JrHospital | null;
   /** Where its name and address put it on the map; null until the lookup finds it. */
   location: { lat: number; lng: number } | null;
   facilities: HospitalFacility[];

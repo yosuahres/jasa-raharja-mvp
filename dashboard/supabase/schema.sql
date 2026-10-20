@@ -31,6 +31,16 @@ create table public.facilities (
 
 -- ---------------------------------------------------------------- 2. hospitals
 
+-- Jasa Raharja's own list of partner hospitals (the "RS JATIM" spreadsheet), each with the office
+-- (loket) that handles claims for it. Uploaded whole from the Daftar RS page.
+create table public.jr_hospitals (
+  code       text primary key,       -- KODE_RUMAHSAKIT, e.g. '0504001'
+  name       text not null,          -- NAMA_RS as the sheet prints it, e.g. 'RSUD SOEDONO, KOTA MADIUN'
+  loket_code text not null,          -- KODE_LOKET, e.g. '0500401'
+  loket_name text not null,          -- NAMA_LOKET, e.g. 'LOKET KANTOR CABANG MADIUN'
+  updated_at timestamptz not null default now()
+);
+
 create table public.hospitals (
   id         text primary key default gen_random_uuid()::text,  -- used in URLs; a short slug reads better
   name       text not null,
@@ -39,6 +49,7 @@ create table public.hospitals (
   province   text not null default '',
   address    text not null default '',
   beds       integer not null default 0 check (beds >= 0),
+  jr_code    text references public.jr_hospitals (code) on delete set null,  -- its row in Jasa Raharja's list, matched by name
   lat        double precision,  -- from looking up its name and address on OpenStreetMap; null until found
   lng        double precision,
   geocoded_query text,          -- what was looked up; a changed address looks it up again
@@ -210,7 +221,7 @@ declare
   t text;
 begin
   foreach t in array array[
-    'specialties', 'facilities', 'hospitals', 'hospital_facilities', 'hospital_staff',
+    'specialties', 'facilities', 'jr_hospitals', 'hospitals', 'hospital_facilities', 'hospital_staff',
     'tariff_books', 'tariff_rows', 'tariff_prices', 'tariff_treatments'
   ] loop
     execute format('alter table public.%I enable row level security', t);

@@ -48,7 +48,7 @@ export function CaseResultCard({
             <TierBadge tier={m.tier} />
           </div>
           <p className="mt-0.5 truncate text-sm text-muted-foreground">
-            {joinFacts(hospital.city, m.summary.tipe && `Tipe ${m.summary.tipe}`, igd && "IGD")}
+            {joinFacts(hospital.city, m.summary.tipe && `Tipe ${m.summary.tipe}`, igd && "IGD", hospital.jasaRaharja?.loketName)}
           </p>
         </div>
 

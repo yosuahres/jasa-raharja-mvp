@@ -6,11 +6,12 @@ import { useActionState, useState, useTransition } from "react";
 
 import { discardImport, type SaveResult, type SaveState, saveImport, switchHospital } from "@/app/(dashboard)/input/actions";
 import { useCatalog } from "@/components/catalog-provider";
+import { JrSelect } from "@/components/jasa-raharja/jr-select";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CATEGORIES } from "@/lib/categories";
-import type { DetectedField, TariffBook } from "@/lib/data/types";
-import { findHospital, sameHospital } from "@/lib/hospital-match";
+import type { DetectedField, JrHospital, TariffBook } from "@/lib/data/types";
+import { findHospital, matchJrHospital, sameHospital } from "@/lib/hospital-match";
 import { bookYear } from "@/lib/tariff-book";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +25,7 @@ const count = (n: number) => n.toLocaleString("id-ID");
 
 /** The hospital a new version of tariffs is for, with what it has now to compare against. */
 export type UpdateTarget = {
-  hospital: { id: string; name: string };
+  hospital: { id: string; name: string; jrCode: string | null };
   book: TariffBook | null;
   facilities: number;
   staff: number;
@@ -37,6 +38,7 @@ export type UpdateTarget = {
 export function ImportPreview({
   preview,
   hospitals,
+  jrHospitals,
   update,
   onReprocess,
   onDiscarded,
@@ -44,6 +46,8 @@ export function ImportPreview({
   preview: Preview;
   /** Hospitals already in the system, to say whether this one is new. */
   hospitals: { id: string; name: string }[];
+  /** Jasa Raharja's list of partner hospitals, to link this one to its row and office. */
+  jrHospitals: JrHospital[];
   /** Set when this is a new version of one hospital's tariffs: the save goes there, and the preview compares. */
   update?: UpdateTarget;
   onReprocess: () => void;
@@ -57,6 +61,13 @@ export function ImportPreview({
   const [busy, startTransition] = useTransition();
   const [actionError, setActionError] = useState<string | null>(null);
   const existing = update?.hospital ?? findHospital(hospitals, profile.name?.value);
+  // The row of Jasa Raharja's list: kept from the hospital, else the one the name matches; a person can change it.
+  const suggestedJr =
+    update?.hospital.jrCode ??
+    matchJrHospital({ name: existing?.name ?? profile.name?.value ?? "", city: profile.city?.value ?? "" }, jrHospitals)?.code ??
+    "";
+  const [jrCode, setJrCode] = useState(suggestedJr);
+  const jr = jrHospitals.find((r) => r.code === jrCode);
   // The document names another hospital than the one it is being saved to: worth a look before publishing.
   const otherName = update && profile.name && !sameHospital(update.hospital.name, profile.name.value) ? profile.name.value : null;
   // Saved now, or earlier when an already-saved upload is reopened.
@@ -158,6 +169,19 @@ export function ImportPreview({
           <Field label="Tahun tarif" field={profile.year} format={String} />
           <Field label="Kepemilikan" field={profile.ownership} />
           <Field label="Alamat" field={profile.address} />
+          {jrHospitals.length > 0 && (
+            <Row
+              label="Loket Jasa Raharja"
+              source={jr ? `${jr.loketName} · kode RS ${jr.code}` : "Pilih dari daftar RS Jasa Raharja"}
+              missing={!jr}
+            >
+              {savedTo ? (
+                <span className="font-medium">{jr ? jr.name : "—"}</span>
+              ) : (
+                <JrSelect list={jrHospitals} value={jrCode} onChange={setJrCode} disabled={busy || saving} />
+              )}
+            </Row>
+          )}
         </Fields>
       </Section>
 
