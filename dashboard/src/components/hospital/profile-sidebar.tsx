@@ -27,6 +27,9 @@ import type { HospitalSummary } from "@/lib/scoring";
 import { bookYear, type Completeness } from "@/lib/tariff-book";
 import { cn } from "@/lib/utils";
 
+import { EditBookSheet } from "./edit-book-sheet";
+import { EditProfileSheet } from "./edit-profile-sheet";
+
 const ACTION =
   "flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md bg-muted px-2 text-xs text-foreground transition-colors outline-none hover:bg-muted/70 focus-visible:ring-3 focus-visible:ring-ring/50";
 
@@ -100,7 +103,7 @@ export function ProfileSidebar({
         <ScoreParameters parameters={summary.parameters} total={summary.servicesScore} />
       </Section>
 
-      <Section title="Profil">
+      <Section title="Profil" action={<EditProfileSheet hospital={hospital} />}>
         <Field icon={Store} label="Loket">
           {hospital.jasaRaharja ? (
             <>
@@ -130,7 +133,7 @@ export function ProfileSidebar({
         </Field>
       </Section>
 
-      <Section title="Data tarif">
+      <Section title="Data tarif" action={book && <EditBookSheet book={book} />}>
         {book ? (
           <>
             <Field icon={FileText} label="Versi">
@@ -155,12 +158,14 @@ export function ProfileSidebar({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** A foldable section; `action` sits at the right of its header without folding it. */
+function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <details open className="group/section border-b">
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-3 text-sm transition-colors outline-none hover:bg-accent/50 focus-visible:bg-accent/50 [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-2 text-sm transition-colors outline-none hover:bg-accent/50 focus-visible:bg-accent/50 [&::-webkit-details-marker]:hidden">
         <span className="truncate">{title}</span>
         <ChevronDown className="size-3.5 shrink-0 -rotate-90 text-muted-foreground transition-transform group-open/section:rotate-0" />
+        {action && <span className="ml-auto flex items-center">{action}</span>}
       </summary>
       <dl className="flex flex-col gap-2 px-4 pb-4 text-sm">{children}</dl>
     </details>

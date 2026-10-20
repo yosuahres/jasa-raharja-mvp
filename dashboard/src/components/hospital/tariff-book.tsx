@@ -10,6 +10,8 @@ import type { TariffBook, TariffLine } from "@/lib/data/types";
 import { formatRange, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+import { TariffRowSheet } from "./tariff-row-sheet";
+
 const formatLinePrice = (line: TariffLine) => {
   if (line.priceMin === null || line.priceMax === null) return "—";
   return line.priceMin === line.priceMax ? formatRupiah(line.priceMin) : formatRange(line.priceMin, line.priceMax);
@@ -29,6 +31,7 @@ const hrefWith = (params: { kategori?: CategoryId; cari?: string; hal?: number }
 
 /** Every row of the document, a category and a page at a time, searchable by name. */
 export function TariffLinesTable({
+  hospitalId,
   book,
   lines,
   total,
@@ -37,6 +40,7 @@ export function TariffLinesTable({
   page,
   className,
 }: {
+  hospitalId: string;
   book: TariffBook;
   /** This page's rows. */
   lines: TariffLine[];
@@ -74,9 +78,12 @@ export function TariffLinesTable({
           ))}
         </ul>
       </nav>
-      <Suspense>
-        <UrlSearchInput param="cari" label="Cari baris" value={query} placeholder="Cari nama tindakan atau layanan" className="max-w-sm" />
-      </Suspense>
+      <div className="flex items-center justify-between gap-3">
+        <Suspense>
+          <UrlSearchInput param="cari" label="Cari baris" value={query} placeholder="Cari nama tindakan atau layanan" className="max-w-sm flex-1" />
+        </Suspense>
+        <TariffRowSheet hospitalId={hospitalId} hasBook />
+      </div>
       <div className="-mx-4">
         <Table>
           <TableHeader className="[&_th]:text-xs [&_th]:text-muted-foreground">
@@ -90,13 +97,13 @@ export function TariffLinesTable({
           <TableBody>
             {lines.map((line) => (
               <TableRow key={line.id}>
-                <TableCell className="hidden pl-4 align-top text-muted-foreground tabular-nums sm:table-cell">{line.page}</TableCell>
+                <TableCell className="hidden pl-4 align-top text-muted-foreground tabular-nums sm:table-cell">{line.page || "—"}</TableCell>
                 <TableCell className="pl-4 whitespace-normal sm:pl-2">
                   {line.rawName}
                   {(line.parents.length > 0 || line.section) && (
                     <span className="block text-xs text-muted-foreground">{line.parents.join(" › ") || line.section}</span>
                   )}
-                  <span className="block text-xs text-muted-foreground sm:hidden">hal. {line.page}</span>
+                  {line.page > 0 && <span className="block text-xs text-muted-foreground sm:hidden">hal. {line.page}</span>}
                   {line.flags.length > 0 && (
                     <span className="mt-0.5 block text-xs font-medium text-tier-b-ink">{line.flags.map((f) => FLAG_LABEL[f] ?? f).join(" · ")}</span>
                   )}

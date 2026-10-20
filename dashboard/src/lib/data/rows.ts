@@ -25,6 +25,7 @@ export type LineRow = {
 
 /** What each extractor flag says about a row. */
 export const FLAG_LABEL: Record<string, string> = {
+  manual: "Entri manual",
   unparsed_price: "Tarif bukan angka biasa",
   continued_across_pages: "Nama disambung dari halaman sebelumnya",
   unlabelled_columns: "Tabel tanpa judul kolom",
