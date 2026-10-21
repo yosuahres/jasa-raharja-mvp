@@ -15,13 +15,20 @@ import {
   type Filters,
   parseFilters,
   parseSort,
+  SORT_OPTIONS,
   type SortKey,
+  withDistanceSort,
 } from "@/components/search/filters";
+import type { RankedPin } from "@/components/search/referral-map";
+import { ReferralMapView } from "@/components/search/referral-map-view";
 import { ResultCard } from "@/components/search/result-card";
 import { toSearchResult } from "@/components/search/results";
 import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { type AccidentCase, accidentCaseKeys, findAccidentCase } from "@/lib/accident-cases";
 import { getDataset, getTreatment, getTreatmentLines } from "@/lib/data/queries";
+import type { Dataset, Hospital } from "@/lib/data/types";
+import { locationParams, type Origin, parseOrigin } from "@/lib/origin";
 import { ALL_LOCATIONS_PARAM, type CaseMatch, citiesOf, rankForCase, rankForTreatment, type TreatmentMatch } from "@/lib/scoring";
 
 export const metadata: Metadata = {
@@ -35,10 +42,14 @@ const first = (value: string | string[] | undefined) => (Array.isArray(value) ? 
 
 // rankForTreatment() and rankForCase() already return the recommended order, so that sort is a
 // no-op, and a stable sort keeps it among equals.
+// Hospitals whose pin isn't found go last.
+const distanceOf = (m: { distanceKm: number | null }) => m.distanceKm ?? Infinity;
+
 const SORT_COMPARE: Record<SortKey, (a: TreatmentMatch, b: TreatmentMatch) => number> = {
   rekomendasi: () => 0,
   lengkap: () => 0,
   harga: (a, b) => a.priceMid - b.priceMid,
+  jarak: (a, b) => distanceOf(a) - distanceOf(b),
 };
 
 const treatmentCount = (m: CaseMatch) => m.steps.reduce((sum, step) => sum + step.treatments.length, 0);
@@ -50,7 +61,19 @@ const CASE_SORT_COMPARE: Record<SortKey, (a: CaseMatch, b: CaseMatch) => number>
   rekomendasi: () => 0,
   lengkap: (a, b) => b.covered - a.covered || treatmentCount(b) - treatmentCount(a),
   harga: (a, b) => priceRatioOf(a) - priceRatioOf(b),
+  jarak: (a, b) => distanceOf(a) - distanceOf(b),
 };
+
+/** Hospitals with a pin, for bearings on the picker's map. */
+const contextPins = (data: Dataset) => data.hospitals.flatMap((h) => (h.location ? [{ id: h.id, name: h.name, ...h.location }] : []));
+
+/** The ranked hospitals the map can place, numbered as listed. */
+const rankedPins = (listed: { summary: { hospital: Hospital }; tier: CaseMatch["tier"]; distanceKm: number | null }[]): RankedPin[] =>
+  listed.flatMap((m, index) =>
+    m.summary.hospital.location && m.distanceKm !== null
+      ? [{ id: m.summary.hospital.id, name: m.summary.hospital.name, rank: index + 1, tier: m.tier, distanceKm: m.distanceKm, ...m.summary.hospital.location }]
+      : [],
+  );
 
 export default async function RecommendationPage({ searchParams }: PageProps<"/rekomendasi">) {
   const params = await searchParams;
@@ -58,11 +81,16 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
   const accidentCase = findAccidentCase(first(params.kasus));
   const [data, treatment] = await Promise.all([getDataset(), key ? getTreatment(key) : null]);
   const cities = citiesOf(data.hospitals);
-  // A city the documents name, or "" for "Semua lokasi" — also what an unknown or missing `lokasi` means.
-  const city = cities.find((c) => c === first(params.lokasi)) ?? "";
+  // A point on the map ranks every hospital by how far it is; otherwise a city the documents name,
+  // or "" for "Semua lokasi" — also what an unknown or missing `lokasi` means.
+  const origin = parseOrigin((key) => first(params[key]));
+  const city = origin ? "" : (cities.find((c) => c === first(params.lokasi)) ?? "");
   const lokasi = city || ALL_LOCATIONS_PARAM;
+  const linkParams = locationParams(origin, lokasi);
 
-  const search = (compact: boolean) => <AccidentSearch accidentCase={accidentCase} location={lokasi} cities={cities} compact={compact} />;
+  const search = (compact: boolean) => (
+    <AccidentSearch accidentCase={accidentCase} location={lokasi} origin={origin} cities={cities} pins={contextPins(data)} compact={compact} />
+  );
 
   if (cities.length === 0) {
     return (
@@ -81,9 +109,10 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
         <CaseRecommendation
           accidentCase={accidentCase}
           city={city}
-          lokasi={lokasi}
+          origin={origin}
+          linkParams={linkParams}
           bookIds={bookIds}
-          sort={parseSort(first(params.urut), CASE_SORT_OPTIONS)}
+          sort={parseSort(first(params.urut), withDistanceSort(CASE_SORT_OPTIONS, origin !== null))}
           filters={parseFilters((key) => first(params[key]))}
         />
       </Results>
@@ -104,9 +133,9 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
 
   // Reached from an accident case: a way back to its other tindakan.
   const back = accidentCase
-    ? { href: `/rekomendasi?${new URLSearchParams({ kasus: accidentCase.id, lokasi })}`, label: accidentCase.name }
+    ? { href: `/rekomendasi?${new URLSearchParams({ kasus: accidentCase.id, ...linkParams })}`, label: accidentCase.name }
     : undefined;
-  const ranked = rankForTreatment(await getTreatmentLines([treatment.key], bookIds), city, data);
+  const ranked = rankForTreatment(await getTreatmentLines([treatment.key], bookIds), city, data, origin);
   if (ranked.length === 0) {
     return (
       <Results search={search(true)} back={back}>
@@ -115,19 +144,21 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
     );
   }
 
-  const sort = parseSort(first(params.urut));
+  const sortOptions = withDistanceSort(SORT_OPTIONS, origin !== null);
+  const sort = parseSort(first(params.urut), sortOptions);
   const filters = parseFilters((key) => first(params[key]));
   const listed = applyFilters(ranked, filters, factsOf).sort(SORT_COMPARE[sort]);
-  const results = listed.map(toSearchResult);
+  const results = listed.map((m) => toSearchResult(m, origin !== null));
   const compareIds = ranked.slice(0, MAX_COMPARE).map((m) => m.summary.hospital.id);
 
   return (
     <Results search={search(true)} back={back}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {origin && <ReferralMapView origin={origin} pins={rankedPins(listed)} />}
+      <div className={cn("flex flex-wrap items-center justify-between gap-2", origin && "mt-4")}>
         <div className="flex items-center gap-2">
           <Suspense>
             <FilterButton facts={ranked.map(factsOf)} />
-            <SortButton />
+            <SortButton options={sortOptions} />
           </Suspense>
         </div>
         {compareIds.length > 1 && (
@@ -160,20 +191,23 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
 async function CaseRecommendation({
   accidentCase,
   city,
-  lokasi,
+  origin,
+  linkParams,
   bookIds,
   sort,
   filters,
 }: {
   accidentCase: AccidentCase;
   city: string;
-  lokasi: string;
+  origin: Origin | null;
+  /** Where the search is from, kept in the links among the results. */
+  linkParams: Record<string, string>;
   bookIds: string[];
   sort: SortKey;
   filters: Filters;
 }) {
   const [data, lines] = await Promise.all([getDataset(), getTreatmentLines(accidentCaseKeys(accidentCase), bookIds)]);
-  const ranked = rankForCase(lines, accidentCase.steps, city, data);
+  const ranked = rankForCase(lines, accidentCase.steps, city, data, origin);
   const listed = applyFilters(ranked, filters, caseFactsOf).sort(CASE_SORT_COMPARE[sort]);
   const compareIds = ranked.slice(0, MAX_COMPARE).map((m) => m.summary.hospital.id);
 
@@ -191,12 +225,17 @@ async function CaseRecommendation({
   return (
     <>
       <h1 className="text-xl font-semibold tracking-tight text-balance">{accidentCase.name}</h1>
+      {origin && (
+        <div className="mt-4">
+          <ReferralMapView origin={origin} pins={rankedPins(listed)} />
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Suspense>
             <FilterButton facts={ranked.map(caseFactsOf)} />
-            <SortButton options={CASE_SORT_OPTIONS} />
+            <SortButton options={withDistanceSort(CASE_SORT_OPTIONS, origin !== null)} />
           </Suspense>
         </div>
         {compareIds.length > 1 && (
@@ -210,7 +249,7 @@ async function CaseRecommendation({
       {listed.length > 0 ? (
         <ol className="mt-3 grid gap-3">
           {listed.map((m) => (
-            <CaseResultCard key={m.summary.hospital.id} match={m} caseId={accidentCase.id} location={lokasi} />
+            <CaseResultCard key={m.summary.hospital.id} match={m} caseId={accidentCase.id} locationParams={linkParams} hasOrigin={origin !== null} />
           ))}
         </ol>
       ) : (

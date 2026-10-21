@@ -2,12 +2,15 @@ import "server-only";
 
 import type { createClient } from "@/lib/supabase/server";
 
+import type { Origin } from "./origin";
+
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 type Place = { id: string; name: string; address: string; city: string; province: string; geocoded_query: string | null };
 
 // OpenStreetMap's public geocoder. Its usage policy asks for an identifying User-Agent and at most one request a second.
 const ENDPOINT = "https://nominatim.openstreetmap.org/search";
+const REVERSE_ENDPOINT = "https://nominatim.openstreetmap.org/reverse";
 const USER_AGENT = "jasa-raharja-dashboard (rujukan rumah sakit)";
 const SPACING_MS = 1100;
 
@@ -81,4 +84,34 @@ export async function geocodeMissing(supabase: Supabase, limit = 5) {
   } finally {
     backfilling = false;
   }
+}
+
+type NominatimHit = { display_name: string; lat: string; lon: string };
+
+// Nominatim names a place down to the country and postcode; the first parts say enough.
+const shortLabel = (displayName: string) =>
+  displayName
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part && part !== "Indonesia" && !/^\d{5}$/.test(part))
+    .slice(0, 4)
+    .join(", ");
+
+const toPlace = (hit: NominatimHit): Origin => ({ label: shortLabel(hit.display_name), lat: Number(hit.lat), lng: Number(hit.lon) });
+
+/** Places in Indonesia matching an address or name typed in, best first. */
+export async function searchPlaces(query: string): Promise<Origin[]> {
+  const url = `${ENDPOINT}?${new URLSearchParams({ q: query, format: "jsonv2", countrycodes: "id", limit: "5" })}`;
+  const response = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(10_000) });
+  if (!response.ok) throw new Error(`Geocoder answered ${response.status}`);
+  return ((await response.json()) as NominatimHit[]).map(toPlace);
+}
+
+/** The place at a point, e.g. one clicked on the map; null when the geocoder has no name for it. */
+export async function reversePlace(lat: number, lng: number): Promise<Origin | null> {
+  const url = `${REVERSE_ENDPOINT}?${new URLSearchParams({ lat: String(lat), lon: String(lng), format: "jsonv2", zoom: "16" })}`;
+  const response = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(10_000) });
+  if (!response.ok) throw new Error(`Geocoder answered ${response.status}`);
+  const hit = (await response.json()) as NominatimHit & { error?: string };
+  return hit.error || !hit.display_name ? null : { ...toPlace(hit), lat, lng };
 }

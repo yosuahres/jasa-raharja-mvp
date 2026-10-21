@@ -24,7 +24,13 @@ export const CASE_SORT_OPTIONS = [
   { value: "harga", label: "Termurah" },
 ] as const;
 
-export type SortOption = (typeof CASE_SORT_OPTIONS)[number];
+/** Offered once the search has a point to measure from. */
+export const DISTANCE_SORT_OPTION = { value: "jarak", label: "Terdekat" } as const;
+
+export type SortOption = (typeof CASE_SORT_OPTIONS)[number] | typeof DISTANCE_SORT_OPTION;
+
+export const withDistanceSort = (options: readonly SortOption[], hasOrigin: boolean): readonly SortOption[] =>
+  hasOrigin ? [...options, DISTANCE_SORT_OPTION] : options;
 
 export type SortKey = SortOption["value"];
 

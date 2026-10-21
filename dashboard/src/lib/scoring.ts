@@ -1,6 +1,7 @@
 import type { AccidentStep } from "./accident-cases";
 import { CARE_CATEGORIES } from "./categories";
 import type { Dataset, Hospital, TariffLine, Tier, Tipe, TreatmentLine } from "./data/types";
+import { formatKm, haversineKm, type Origin } from "./origin";
 
 /** How the general score weighs each part. */
 export const WEIGHTS = {
@@ -47,6 +48,16 @@ const hasFacility = (hospital: Hospital, id: string) => hospital.facilities.some
 
 // How quickly a victim gets into care once there: an emergency room and an ambulance.
 const serviceAccess = (hospital: Hospital) => (hasFacility(hospital, "igd") ? 50 : 0) + (hasFacility(hospital, "ambulans") ? 50 : 0);
+
+/** Road distance from the accident, as the crow flies; null without an origin or when the hospital's pin isn't found. */
+const distanceFrom = (origin: Origin | null, hospital: Hospital) => (origin && hospital.location ? haversineKm(origin, hospital.location) : null);
+
+// How near a hospital is to the accident, 0–100: anything within 10 km counts in full, 150 km and beyond nothing.
+// A hospital whose pin isn't found counts as far, so it can't outrank one known to be near.
+const nearness = (km: number | null) => (km === null ? 0 : clamp(100 * (1 - Math.max(0, km - 10) / 140)));
+
+/** Within this, the distance is worth pointing out. */
+const NEAR_KM = 15;
 
 export type Placing<Band extends string = Tier> = { tier: Band; /** 1 for the best; equal scores share a place. */ rank: number; of: number };
 
@@ -227,6 +238,8 @@ export type TreatmentMatch = {
   /** Positive when cheaper than the median, as a share of it. */
   savingVsMedian: number;
   composite: number;
+  /** From the accident; null without an origin or a pin for the hospital. */
+  distanceKm: number | null;
   /** Against the other hospitals that have it. */
   tier: Tier;
   placing: Placing;
@@ -253,9 +266,10 @@ const midOf = (line: { priceMin: number; priceMax: number }) => (line.priceMin +
 
 /**
  * Ranks the hospitals in a city whose current document has rows found for a search: their general
- * score, and the price of their plainest matching row against every hospital's median.
+ * score, and the price of their plainest matching row against every hospital's median. With an
+ * origin, how near they are to the accident weighs most of all, more than the price.
  */
-export const rankForTreatment = (lines: SearchedLine[], city: string, data: Dataset): TreatmentMatch[] => {
+export const rankForTreatment = (lines: SearchedLine[], city: string, data: Dataset, origin: Origin | null = null): TreatmentMatch[] => {
   const priced = lines.filter(isPriced);
   const found = data.hospitals.flatMap((hospital) => {
     const own = priced
@@ -271,15 +285,20 @@ export const rankForTreatment = (lines: SearchedLine[], city: string, data: Data
       const summary = summaries.find((s) => s.hospital.id === hospital.id) ?? summarize(hospital, data);
       const priceMid = midOf(line);
       const savingVsMedian = (medianPrice - priceMid) / medianPrice;
-      const composite = 0.4 * summary.composite + 0.35 * costScore(priceMid / medianPrice) + 0.1 * serviceAccess(hospital);
+      const distanceKm = distanceFrom(origin, hospital);
+      const composite = origin
+        ? 0.3 * summary.composite + 0.25 * costScore(priceMid / medianPrice) + 0.1 * serviceAccess(hospital) + 0.35 * nearness(distanceKm)
+        : 0.4 * summary.composite + 0.35 * costScore(priceMid / medianPrice) + 0.1 * serviceAccess(hospital);
 
       const strengths: string[] = [];
       const notes: string[] = [];
+      if (distanceKm !== null && distanceKm <= NEAR_KM) strengths.push(`${formatKm(distanceKm)} dari lokasi kejadian`);
       if (savingVsMedian >= 0.1) strengths.push(`Tarif ${Math.round(savingVsMedian * 100)}% di bawah median`);
       if (hospital.facilities.some((f) => f.facilityId === "igd" && f.available24h)) strengths.push("IGD 24 jam");
       if (savingVsMedian <= -0.15) notes.push(`Tarif ${Math.round(-savingVsMedian * 100)}% di atas median`);
+      if (origin && distanceKm === null) notes.push("Lokasi rumah sakit belum ditemukan");
 
-      return { summary, line, otherRows, priceMid, medianPrice, savingVsMedian, composite, strengths, notes };
+      return { summary, line, otherRows, priceMid, medianPrice, savingVsMedian, composite, distanceKm, strengths, notes };
     });
   const placed = placings(matches, (m) => m.composite, THIRDS);
   return matches
@@ -320,6 +339,8 @@ export type CaseMatch = {
   /** Steps it has at least one tindakan for. */
   covered: number;
   composite: number;
+  /** From the accident; null without an origin or a pin for the hospital. */
+  distanceKm: number | null;
   /** Against the other hospitals that have something for the case. */
   tier: Tier;
   placing: Placing;
@@ -341,9 +362,10 @@ const caseTreatmentOf = (key: string, rows: TreatmentLine[]): CaseTreatment => {
 /**
  * Ranks the hospitals in a city for a whole accident case: how many of its steps their current
  * document has tindakan for (the most), then their general score. Steps no document there has
- * anything for are left out; hospitals with nothing for the case are too.
+ * anything for are left out; hospitals with nothing for the case are too. With an origin, how near
+ * they are to the accident weighs as much as what they cover.
  */
-export const rankForCase = (lines: TreatmentLine[], caseSteps: AccidentStep[], city: string, data: Dataset): CaseMatch[] => {
+export const rankForCase = (lines: TreatmentLine[], caseSteps: AccidentStep[], city: string, data: Dataset, origin: Origin | null = null): CaseMatch[] => {
   const hospitals = data.hospitals.filter((h) => isIn(h, city));
   const bookIds = new Set(hospitals.flatMap((h) => (h.tariffBook ? [h.tariffBook.id] : [])));
   const local = lines.filter((l) => bookIds.has(l.bookId));
@@ -373,8 +395,11 @@ export const rankForCase = (lines: TreatmentLine[], caseSteps: AccidentStep[], c
     const covered = covers.filter((c) => c.treatments.length > 0).length;
     // Steps count most: a hospital that can do the operation beats one with many small tindakan.
     const coverage = 70 * (covered / steps.length) + 30 * (keys / mostKeys);
-    const composite = 0.45 * coverage + 0.35 * summary.composite + 0.08 * serviceAccess(hospital);
-    return { summary, steps: covers, covered, composite };
+    const distanceKm = distanceFrom(origin, hospital);
+    const composite = origin
+      ? 0.35 * coverage + 0.25 * summary.composite + 0.05 * serviceAccess(hospital) + 0.35 * nearness(distanceKm)
+      : 0.45 * coverage + 0.35 * summary.composite + 0.08 * serviceAccess(hospital);
+    return { summary, steps: covers, covered, composite, distanceKm };
   });
   const placed = placings(matches, (m) => m.composite, THIRDS);
   return matches

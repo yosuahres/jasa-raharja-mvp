@@ -6,6 +6,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { formatRupiah, joinFacts } from "@/lib/format";
 import type { CaseMatch, CaseTreatment } from "@/lib/scoring";
 
+import { distanceText } from "./results";
+
 const priceText = (t: CaseTreatment) => {
   if (t.priceMin === null || t.priceMax === null) return "—";
   return t.priceMin === t.priceMax ? formatRupiah(t.priceMin) : `${formatRupiah(t.priceMin)} – ${formatRupiah(t.priceMax)}`;
@@ -19,23 +21,23 @@ const priceText = (t: CaseTreatment) => {
 export function CaseResultCard({
   match: m,
   caseId,
-  location,
+  locationParams,
+  hasOrigin,
   open = false,
 }: {
   match: CaseMatch;
   caseId: string;
-  location: string;
+  /** Where the search is from, to keep in the tindakan links. */
+  locationParams: Record<string, string>;
+  hasOrigin: boolean;
   open?: boolean;
 }) {
   const hospital = m.summary.hospital;
   const treatments = m.steps.reduce((sum, step) => sum + step.treatments.length, 0);
   const igd = hospital.facilities.some((f) => f.facilityId === "igd");
+  const distance = distanceText(m.distanceKm, hasOrigin);
 
-  const href = (key: string) => {
-    const params = new URLSearchParams({ tindakan: key, kasus: caseId });
-    if (location) params.set("lokasi", location);
-    return `/rekomendasi?${params}`;
-  };
+  const href = (key: string) => `/rekomendasi?${new URLSearchParams({ tindakan: key, kasus: caseId, ...locationParams })}`;
 
   return (
     <li className="overflow-hidden rounded-xl bg-card ring-1 ring-border transition-shadow hover:shadow-md">
@@ -50,6 +52,7 @@ export function CaseResultCard({
           <p className="mt-0.5 truncate text-sm text-muted-foreground">
             {joinFacts(hospital.city, m.summary.tipe && `Tipe ${m.summary.tipe}`, igd && "IGD", hospital.jasaRaharja?.loketName)}
           </p>
+          {distance && <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{distance}</p>}
         </div>
 
         <div className="flex shrink-0 items-start gap-3">

@@ -28,8 +28,9 @@ export function ResultCard({ result: r, treatmentName }: { result: SearchResult;
         {!sameName(r.rowName, treatmentName) && <p className="mt-2 line-clamp-2 text-xs text-foreground/80">{r.rowName}</p>}
       </div>
 
-      <div className="flex items-start border-t border-dashed p-5 sm:justify-end sm:border-t-0 sm:border-l">
+      <div className="flex flex-col items-start gap-1 border-t border-dashed p-5 sm:items-end sm:border-t-0 sm:border-l">
         <p className="text-xl font-bold tracking-tight whitespace-nowrap tabular-nums">{formatRange(r.priceMin, r.priceMax)}</p>
+        {r.distance && <p className="text-xs text-muted-foreground tabular-nums">{r.distance}</p>}
       </div>
     </li>
   );

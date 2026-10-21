@@ -1,4 +1,5 @@
 import type { Tier, Tipe } from "@/lib/data/types";
+import { formatKm } from "@/lib/origin";
 import { treatmentNameOf, type TreatmentMatch } from "@/lib/scoring";
 
 /** The slice of a TreatmentMatch a result card shows. */
@@ -15,9 +16,15 @@ export type SearchResult = {
   rowName: string;
   priceMin: number;
   priceMax: number;
+  /** How far from the accident, in words; null when the search has no point. */
+  distance: string | null;
 };
 
-export const toSearchResult = (m: TreatmentMatch): SearchResult => ({
+/** The distance as a card says it; without a pin for the hospital, that it's unknown. */
+export const distanceText = (distanceKm: number | null, hasOrigin: boolean) =>
+  !hasOrigin ? null : distanceKm === null ? "Jarak belum diketahui" : `${formatKm(distanceKm)} dari lokasi kejadian`;
+
+export const toSearchResult = (m: TreatmentMatch, hasOrigin: boolean): SearchResult => ({
   id: m.summary.hospital.id,
   name: m.summary.hospital.name,
   city: m.summary.hospital.city,
@@ -27,4 +34,5 @@ export const toSearchResult = (m: TreatmentMatch): SearchResult => ({
   rowName: treatmentNameOf(m.line),
   priceMin: m.line.priceMin,
   priceMax: m.line.priceMax,
+  distance: distanceText(m.distanceKm, hasOrigin),
 });
