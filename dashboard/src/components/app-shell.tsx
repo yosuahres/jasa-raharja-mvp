@@ -4,6 +4,7 @@ import {
   Building2,
   ChevronDown,
   FileUp,
+  GitCompareArrows,
   House,
   type LucideIcon,
   MapIcon,
@@ -53,6 +54,7 @@ const NAV: NavGroup[] = [
       { href: "/rekomendasi", label: "Cari Rujukan", icon: Route },
       { href: "/rumah-sakit", label: "Rumah Sakit", icon: Building2 },
       { href: "/peta", label: "Peta Rumah Sakit", icon: MapIcon },
+      { href: "/bandingkan", label: "Bandingkan", icon: GitCompareArrows },
     ],
   },
   {
