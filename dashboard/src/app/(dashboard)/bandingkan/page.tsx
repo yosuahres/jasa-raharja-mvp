@@ -3,15 +3,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { HospitalPicker, type PickerOption } from "@/components/compare/hospital-picker";
+import { UrlTreatmentField } from "@/components/compare/treatment-field";
 import { RatingPill } from "@/components/rating";
 import { TipeBadge } from "@/components/tier-badge";
-import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
-import { UrlSearchInput } from "@/components/url-search-input";
-import { UrlSelect } from "@/components/url-select";
-import { getBookRowStats, getDataset, searchLines } from "@/lib/data/queries";
-import type { Dataset, Hospital } from "@/lib/data/types";
+import { compareHref } from "@/lib/compare";
+import { findTreatments, getBookRowStats, getDataset, getTopTreatments, searchLines } from "@/lib/data/queries";
+import type { Dataset, Hospital, Treatment } from "@/lib/data/types";
 import { formatJuta, formatPercent, formatRange, joinFacts } from "@/lib/format";
 import { allSummaries, fairPriceLevel, type HospitalSummary, rankForTreatment, summarize, type TreatmentMatch } from "@/lib/scoring";
 import { bookYearLabel, type Completeness, dataCompleteness } from "@/lib/tariff-book";
@@ -22,17 +22,19 @@ export const metadata: Metadata = {
   description: "Bandingkan tarif, layanan, dan fasilitas rumah sakit",
 };
 
-const MAX_COMPARE = 3;
-
 const STICKY_HEAD = "sticky top-0 z-20 bg-card shadow-[inset_0_-1px_0_var(--border)]";
 
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
 
-// Commas are kept literal so the link reads like the documented `?rs=a,b,c` contract.
-const compareHref = (ids: string[], query?: string) => {
-  const parts = [ids.length > 0 && `rs=${ids.join(",")}`, query && `q=${encodeURIComponent(query)}`].filter(Boolean).join("&");
-  return parts ? `/bandingkan?${parts}` : "/bandingkan";
+/** The tindakan the URL names, so the field shows it as picked; a name no document prints still shows as typed. */
+const currentTreatment = async (query: string, suggestions: Treatment[]): Promise<Treatment> => {
+  const same = (t: Treatment) => t.name.toLowerCase() === query.toLowerCase();
+  return suggestions.find(same) ?? (await findTreatments(query, 5)).find(same) ?? { key: query, name: query, hospitals: 0 };
 };
+
+/** What the picker needs of each hospital, in ranking order. */
+const toOptions = (ranked: HospitalSummary[]): PickerOption[] =>
+  ranked.map((s) => ({ id: s.hospital.id, name: s.hospital.name, city: s.hospital.city, tipe: s.tipe }));
 
 /** Marks the best value in a row. Ties all win; a row where everyone is equal highlights nobody. */
 const bestOf = (values: (number | null)[], prefer: "high" | "low") => {
@@ -53,13 +55,13 @@ type Column = {
 
 export default async function ComparePage({ searchParams }: PageProps<"/bandingkan">) {
   const params = await searchParams;
-  const data = await getDataset();
+  const [data, suggestions] = await Promise.all([getDataset(), getTopTreatments()]);
   const query = (first(params.q) ?? "").trim();
+  const treatment = query ? await currentTreatment(query, suggestions) : null;
   const requested = [...new Set((first(params.rs) ?? "").split(",").map((id) => id.trim()))];
   const hospitals = requested
     .map((id) => data.hospitals.find((h) => h.id === id))
-    .filter((h): h is Hospital => Boolean(h))
-    .slice(0, MAX_COMPARE);
+    .filter((h): h is Hospital => Boolean(h));
   const ids = hospitals.map((h) => h.id);
 
   // Matched against every hospital, so the median is the market's, not just these three's.
@@ -83,102 +85,65 @@ export default async function ComparePage({ searchParams }: PageProps<"/bandingk
     // No title of its own: the app header names the page.
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-8">
 
-      <div className="mb-6 grid gap-3">
-        <div className="sm:max-w-md">
-          <Suspense>
-            <UrlSearchInput param="q" label="Tindakan (opsional)" value={query} placeholder="mis. kraniotomi, CT scan kepala" />
-          </Suspense>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          {hospitals.map((h) => (
-            <span key={h.id} className="inline-flex h-6 max-w-full items-center gap-0.5 rounded-full bg-muted pr-0.5 pl-2.5 font-medium">
-              <span className="truncate">{h.name}</span>
-              <Link
-                href={compareHref(
-                  ids.filter((id) => id !== h.id),
-                  query,
-                )}
-                scroll={false}
-                aria-label={`Hapus ${h.name} dari perbandingan`}
-                className="grid size-5 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-              >
-                <X className="size-3" />
-              </Link>
-            </span>
-          ))}
-        </div>
-      </div>
-
       {columns.length < 2 ? (
-        <PickHospitals ranked={ranked} ids={ids} query={query} />
+        <PickHospitals ranked={ranked} hospitals={hospitals} ids={ids} query={query} />
       ) : (
         <>
           {query && <Summary columns={columns} query={query} />}
-          <CompareTable columns={columns} ranked={ranked} ids={ids} query={query} data={data} />
+          <CompareTable columns={columns} ranked={ranked} ids={ids} query={query} treatment={treatment} suggestions={suggestions} data={data} />
         </>
       )}
     </div>
   );
 }
 
-function PickHospitals({ ranked, ids, query }: { ranked: HospitalSummary[]; ids: string[]; query: string }) {
-  const suggestion = ranked.filter((s) => s.tipe !== null).slice(0, MAX_COMPARE);
+function PickHospitals({ ranked, hospitals, ids, query }: { ranked: HospitalSummary[]; hospitals: Hospital[]; ids: string[]; query: string }) {
+  const badgeOf = (hospital: Hospital) => {
+    const tipe = ranked.find((s) => s.hospital.id === hospital.id)?.tipe ?? null;
+    return tipe ? <TipeBadge tipe={tipe} /> : <span className="text-xs text-muted-foreground">Tanpa tarif</span>;
+  };
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Pilih 2–3 rumah sakit</CardTitle>
+        <CardTitle>Pilih rumah sakit</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4">
-        {ranked.length === 0 && <p className="text-sm text-muted-foreground">Belum ada data</p>}
-        {ids.length === 0 && suggestion.length >= 2 && (
-          <div className="flex flex-col gap-3 rounded-lg bg-muted/60 p-3 sm:flex-row sm:items-center">
-            <Link
-              href={compareHref(
-                suggestion.map((s) => s.hospital.id),
-                query,
-              )}
-              className={cn(buttonVariants(), "self-start sm:self-auto")}
-            >
-              Bandingkan 3 teratas
-              <ArrowRight />
-            </Link>
-            <p className="text-sm text-muted-foreground text-pretty">{suggestion.map((s) => s.hospital.name).join(" · ")}</p>
+        {ranked.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Belum ada data</p>
+        ) : (
+          <div className="sm:max-w-md">
+            <Suspense>
+              <HospitalPicker options={toOptions(ranked)} ids={ids} query={query} autoFocus />
+            </Suspense>
           </div>
         )}
-        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {ranked.map((s) => {
-            const selected = ids.includes(s.hospital.id);
-            const next = selected ? ids.filter((id) => id !== s.hospital.id) : [...ids, s.hospital.id];
-            return (
-              <li key={s.hospital.id}>
+        {hospitals.length > 0 ? (
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {hospitals.map((hospital) => (
+              <li key={hospital.id} className="flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{hospital.name}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{hospital.city || "—"}</span>
+                </span>
+                {badgeOf(hospital)}
                 <Link
-                  href={compareHref(next, query)}
-                  scroll={false}
-                  aria-current={selected ? "true" : undefined}
-                  className={cn(
-                    "flex h-full items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors hover:bg-muted/60",
-                    selected && "border-foreground/40 bg-muted/60",
+                  href={compareHref(
+                    ids.filter((id) => id !== hospital.id),
+                    query,
                   )}
+                  scroll={false}
+                  aria-label={`Hapus ${hospital.name} dari perbandingan`}
+                  className="-mr-1 shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-input",
-                      selected && "border-primary bg-primary text-primary-foreground",
-                    )}
-                  >
-                    {selected && <Check className="size-3" />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{s.hospital.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{s.hospital.city || "—"}</span>
-                  </span>
-                  {s.tipe ? <TipeBadge tipe={s.tipe} /> : <span className="text-xs text-muted-foreground">Tanpa tarif</span>}
+                  <X className="size-4" />
                 </Link>
               </li>
-            );
-          })}
-        </ul>
+            ))}
+          </ul>
+        ) : (
+          ranked.length > 0 && <p className="text-sm text-muted-foreground">Tabel perbandingan muncul setelah dua rumah sakit dipilih.</p>
+        )}
+        {hospitals.length === 1 && <p className="text-sm text-muted-foreground">Tambah satu lagi untuk membandingkan.</p>}
       </CardContent>
     </Card>
   );
@@ -214,28 +179,45 @@ function Summary({ columns, query }: { columns: Column[]; query: string }) {
   );
 }
 
-function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]; ranked: HospitalSummary[]; ids: string[]; query: string; data: Dataset }) {
-  const hasSlot = columns.length < MAX_COMPARE;
+function CompareTable({
+  columns,
+  ranked,
+  ids,
+  query,
+  treatment,
+  suggestions,
+  data,
+}: {
+  columns: Column[];
+  ranked: HospitalSummary[];
+  ids: string[];
+  query: string;
+  treatment: Treatment | null;
+  suggestions: Treatment[];
+  data: Dataset;
+}) {
   const median = columns.find((c) => c.match)?.match?.medianPrice ?? null;
+  // Label column, one per hospital, and the add slot.
+  const span = columns.length + 2;
 
   return (
     <div className="rounded-xl border bg-card">
-      {/* Below lg the table scrolls inside its own box (so both sticky edges work there);
-          from lg it fits, and the header row sticks to the top of the window instead. */}
-      <div className="max-h-[80svh] overflow-auto overscroll-x-contain rounded-xl lg:max-h-none lg:overflow-visible">
+      {/* The table scrolls inside its own box, sideways once the columns outgrow it, with both sticky edges. */}
+      <div className="max-h-[85svh] overflow-auto overscroll-x-contain rounded-xl">
         {/* Separate borders so the corner cells can round off with the card; row lines are drawn per cell. */}
         <table
           className={cn(
-            "w-full min-w-[46rem] table-fixed border-separate border-spacing-0 text-sm",
+            "w-max min-w-full table-fixed border-separate border-spacing-0 text-sm",
             "[&_tbody_tr:not([data-section])>*]:border-b [&_tbody_tr:last-child>*]:border-b-0",
             "[&_tbody_tr:last-child>*:first-child]:rounded-bl-xl [&_tbody_tr:last-child>*:last-child]:rounded-br-xl",
           )}
         >
           <colgroup>
-            <col className="w-40 sm:w-56" />
-            {Array.from({ length: MAX_COMPARE }, (_, i) => (
-              <col key={i} />
+            <col className="w-56 sm:w-64" />
+            {columns.map((c) => (
+              <col key={c.hospital.id} className="w-64" />
             ))}
+            <col className="w-56" />
           </colgroup>
           <thead>
             <tr>
@@ -245,53 +227,42 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
               {columns.map((c) => (
                 <HospitalHeader key={c.hospital.id} column={c} ids={ids} query={query} />
               ))}
-              {hasSlot && (
-                <TableHead className={cn(STICKY_HEAD, "h-auto rounded-tr-xl py-3 align-top font-normal whitespace-normal")}>
-                  <div className="rounded-lg border border-dashed p-2.5">
-                    <Suspense>
-                      <UrlSelect
-                        param="rs"
-                        label="Tambah rumah sakit"
-                        value=""
-                        options={[
-                          { value: "", label: "Pilih rumah sakit…" },
-                          ...ranked
-                            .filter((s) => !ids.includes(s.hospital.id))
-                            .map((s) => ({
-                              value: [...ids, s.hospital.id].join(","),
-                              label: joinFacts(s.hospital.name, s.hospital.city),
-                            })),
-                        ]}
-                      />
-                    </Suspense>
-                  </div>
-                </TableHead>
-              )}
+              <TableHead className={cn(STICKY_HEAD, "h-auto rounded-tr-xl py-3 align-top font-normal whitespace-normal")}>
+                <div className="rounded-lg border border-dashed p-2">
+                  <Suspense>
+                    <HospitalPicker options={toOptions(ranked)} ids={ids} query={query} compact />
+                  </Suspense>
+                </div>
+              </TableHead>
             </tr>
           </thead>
           <TableBody>
+            <Section title="Tarif tindakan" span={span} />
+            <TreatmentRow
+              columns={columns}
+              query={query}
+              hint={median === null ? undefined : `Median ${formatJuta(median)}`}
+              best={bestOf(
+                columns.map((c) => c.match?.priceMid ?? null),
+                "low",
+              )}
+              render={(c) =>
+                c.match ? (
+                  <span className="grid justify-items-start gap-1.5">
+                    <span className="font-medium tabular-nums">{formatRange(c.match.line.priceMin, c.match.line.priceMax)}</span>
+                    <RatingPill level={fairPriceLevel(c.match.savingVsMedian)} />
+                  </span>
+                ) : (
+                  <Muted>Tidak ada tarif</Muted>
+                )
+              }
+            >
+              <Suspense>
+                <UrlTreatmentField value={treatment} suggestions={suggestions} />
+              </Suspense>
+            </TreatmentRow>
             {query && (
               <>
-                <Section title={`Tarif "${query}"`} />
-                <CompareRow
-                  label="Tarif"
-                  hint={median === null ? undefined : `Median ${formatJuta(median)}`}
-                  columns={columns}
-                  best={bestOf(
-                    columns.map((c) => c.match?.priceMid ?? null),
-                    "low",
-                  )}
-                  render={(c) =>
-                    c.match ? (
-                      <span className="grid justify-items-start gap-1.5">
-                        <span className="font-medium tabular-nums">{formatRange(c.match.line.priceMin, c.match.line.priceMax)}</span>
-                        <RatingPill level={fairPriceLevel(c.match.savingVsMedian)} />
-                      </span>
-                    ) : (
-                      <Muted>Tidak ada tarif</Muted>
-                    )
-                  }
-                />
                 <CompareRow
                   label="Baris di dokumen"
                   columns={columns}
@@ -312,7 +283,7 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
               </>
             )}
 
-            <Section title="Penilaian" />
+            <Section title="Penilaian" span={span} />
             <CompareRow
               label="Harga"
               hint="Dibanding RS lain, pada layanan yang sama"
@@ -358,7 +329,7 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
               render={(c) => <Score value={c.summary.servicesScore} />}
             />
 
-            <Section title="Profil" />
+            <Section title="Profil" span={span} />
             <CompareRow label="Kepemilikan" columns={columns} render={(c) => c.hospital.ownership ?? "—"} />
             <CompareRow label="Kota" columns={columns} render={(c) => joinFacts(c.hospital.city, c.hospital.province) || "—"} />
             <CompareRow
@@ -376,7 +347,7 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
               }
             />
 
-            <Section title="Fasilitas" />
+            <Section title="Fasilitas" span={span} />
             {data.catalog.facilities.map((f) => (
               <CompareRow
                 key={f.id}
@@ -389,7 +360,7 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
               />
             ))}
 
-            <Section title="Tenaga medis" />
+            <Section title="Tenaga medis" span={span} />
             {data.catalog.specialties.map((s) => (
               <CompareRow
                 key={s.id}
@@ -402,7 +373,7 @@ function CompareTable({ columns, ranked, ids, query, data }: { columns: Column[]
               />
             ))}
 
-            <Section title="Data" />
+            <Section title="Data" span={span} />
             <CompareRow
               label="Data tarif"
               columns={columns}
@@ -464,10 +435,61 @@ function HospitalHeader({ column: c, ids, query }: { column: Column; ids: string
   );
 }
 
-function Section({ title }: { title: string }) {
+/** The tindakan row: the picker sits in the label cell, and its prices (or a hint to pick one) fill the rest. */
+function TreatmentRow({
+  columns,
+  query,
+  hint,
+  best,
+  render,
+  children,
+}: {
+  columns: Column[];
+  query: string;
+  hint?: React.ReactNode;
+  best: boolean[];
+  render: (column: Column, index: number) => React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <TableRow className="hover:bg-transparent">
+      <TableHead
+        scope="row"
+        className="sticky left-0 z-10 h-auto bg-card py-2.5 pr-3 pl-4 align-top font-normal whitespace-normal shadow-[inset_-1px_0_0_var(--border)]"
+      >
+        {children}
+        {query && hint && <span className="mt-1.5 block text-xs text-muted-foreground">{hint}</span>}
+      </TableHead>
+      {query ? (
+        <>
+          {columns.map((c, index) => (
+            <TableCell key={c.hospital.id} className={cn("py-2.5 align-top whitespace-normal", best[index] && "bg-tier-a-soft/70")}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">{render(c, index)}</div>
+                {best[index] && (
+                  <span className="shrink-0 text-tier-a-ink">
+                    <Check className="size-4" />
+                    <span className="sr-only">Terbaik</span>
+                  </span>
+                )}
+              </div>
+            </TableCell>
+          ))}
+          <TableCell />
+        </>
+      ) : (
+        <TableCell colSpan={columns.length + 1} className="py-2.5 align-middle text-sm text-muted-foreground">
+          Pilih tindakan untuk membandingkan tarifnya.
+        </TableCell>
+      )}
+    </TableRow>
+  );
+}
+
+function Section({ title, span }: { title: string; span: number }) {
   return (
     <TableRow data-section className="bg-muted/50 hover:bg-muted/50">
-      <TableCell colSpan={MAX_COMPARE + 1} className="p-0">
+      <TableCell colSpan={span} className="p-0">
         {/* Sticky so the section title stays in view while the table scrolls sideways. */}
         <div className="sticky left-0 inline-flex items-baseline gap-2 px-4 pt-3 pb-1.5">
           <span className="text-xs font-semibold tracking-wide uppercase">{title}</span>
@@ -512,7 +534,7 @@ function CompareRow({
           </div>
         </TableCell>
       ))}
-      {columns.length < MAX_COMPARE && <TableCell />}
+      <TableCell />
     </TableRow>
   );
 }

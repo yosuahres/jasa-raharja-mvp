@@ -12,8 +12,6 @@ import { Button } from "@/components/ui/button";
 import { notifyError, notifySuccess } from "@/lib/action-toast";
 import { cn } from "@/lib/utils";
 
-const MAX_COMPARE = 3;
-
 type CompareSelection = {
   selected: string[];
   toggle: (id: string) => void;
@@ -73,7 +71,7 @@ export function SelectionBar({ visibleIds }: { visibleIds: string[] }) {
 
   if (selected.length === 0) return null;
 
-  const canCompare = selected.length >= 2 && selected.length <= MAX_COMPARE;
+  const canCompare = selected.length >= 2;
 
   const remove = () =>
     startDelete(async () => {
