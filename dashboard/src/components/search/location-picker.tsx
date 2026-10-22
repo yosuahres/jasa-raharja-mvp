@@ -7,6 +7,7 @@ import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatCoords, type Origin, type Point } from "@/lib/origin";
 import { ALL_LOCATIONS_PARAM } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
@@ -31,9 +32,6 @@ export const locationLabel = (value: LocationValue) =>
 /** The value for the URL's `lokasi` and origin, the inverse of what the page parses. */
 export const locationValueOf = (lokasi: string, origin: Origin | null): LocationValue =>
   origin ? { kind: "point", origin } : lokasi && lokasi !== ALL_LOCATIONS_PARAM ? { kind: "city", city: lokasi } : ALL_LOCATIONS;
-
-const CHIP =
-  "rounded-md px-2.5 py-1 text-xs font-medium transition-colors aria-[current=true]:bg-foreground aria-[current=true]:text-background bg-muted text-muted-foreground hover:text-foreground";
 
 /** The name of a point, from the geocoder; its coordinates when it has none or can't be asked. */
 const nameOf = async (point: Point): Promise<string> => {
@@ -83,6 +81,12 @@ export function LocationPicker({
   };
 
   const point = draft.kind === "point" ? draft.origin : null;
+  // The dropdown shows nothing while a map point is chosen; picking a city replaces the point.
+  const cityValue = draft.kind === "all" ? ALL_LOCATIONS_PARAM : draft.kind === "city" ? draft.city : null;
+  const pickCity = (next: string | null) => {
+    if (next === null) return;
+    setDraft(next === ALL_LOCATIONS_PARAM ? ALL_LOCATIONS : { kind: "city", city: next });
+  };
 
   const place = (next: Point, label?: string) => {
     setDraft({ kind: "point", origin: { ...next, label: label ?? formatCoords(next) } });
@@ -188,16 +192,21 @@ export function LocationPicker({
             </div>
             <p className="text-xs text-muted-foreground">Klik di peta untuk menandai titik kejadian. Titik abu-abu adalah rumah sakit.</p>
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-xs text-muted-foreground">Atau pilih kota:</span>
-              <button type="button" onClick={() => setDraft(ALL_LOCATIONS)} aria-current={draft.kind === "all"} className={CHIP}>
-                Semua lokasi
-              </button>
-              {cities.map((city) => (
-                <button key={city} type="button" onClick={() => setDraft({ kind: "city", city })} aria-current={draft.kind === "city" && draft.city === city} className={CHIP}>
-                  {city}
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Atau pilih kota:</span>
+              <Select value={cityValue} onValueChange={pickCity}>
+                <SelectTrigger size="sm" aria-label="Pilih kota" className="min-w-40 bg-background">
+                  <SelectValue>{(selected: string | null) => (selected === null ? <span className="text-muted-foreground">Pilih kota</span> : selected === ALL_LOCATIONS_PARAM ? "Semua lokasi" : selected)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_LOCATIONS_PARAM}>Semua lokasi</SelectItem>
+                  {cities.map((city) => (
+                    <SelectItem key={city} value={city}>
+                      {city}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
