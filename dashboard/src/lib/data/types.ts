@@ -122,11 +122,13 @@ export type DetectedProfile = {
 /** A hospital heading in the document, for a regulation that lists many. */
 export type DocumentHospital = { heading: string; name: string; pages: number };
 
+export const OWNERSHIPS = ["Pemerintah", "Swasta", "BUMN", "TNI/Polri"] as const;
+
 export type Hospital = {
   id: string;
   name: string;
   /** Null when its document doesn't print it. */
-  ownership: "Pemerintah" | "Swasta" | "BUMN" | "TNI/Polri" | null;
+  ownership: (typeof OWNERSHIPS)[number] | null;
   /** As the document prints them; empty when it doesn't. */
   city: string;
   province: string;

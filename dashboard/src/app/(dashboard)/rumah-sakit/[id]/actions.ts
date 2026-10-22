@@ -5,24 +5,24 @@ import { after } from "next/server";
 
 import { CATEGORIES } from "@/lib/categories";
 import { SHARED_DATA_TAG } from "@/lib/data/queries";
+import { OWNERSHIPS } from "@/lib/data/types";
 import { requireUser, saveError, text } from "@/lib/form";
 import { geocodeHospital } from "@/lib/geocode";
 import { createClient } from "@/lib/supabase/server";
 
 export type ActionState = { error: string | null };
 
-const OWNERSHIPS = ["Pemerintah", "Swasta", "BUMN", "TNI/Polri"];
-
 // Rows a person types in carry this flag (FLAG_LABEL in lib/data/rows.ts names it in the table).
 const MANUAL_FLAG = "manual";
 
 /** An optional whole number: null when left empty, undefined when it isn't one. */
-const whole = (data: FormData, key: string): number | null | undefined => {
-  const raw = text(data, key);
+const wholeNumber = (raw: string): number | null | undefined => {
   if (!raw) return null;
   const n = Number(raw);
   return Number.isInteger(n) && n >= 0 ? n : undefined;
 };
+
+const whole = (data: FormData, key: string) => wholeNumber(text(data, key));
 
 /** "ya" / "tidak", or null when not known. */
 const yesNo = (data: FormData, key: string) => {
@@ -37,51 +37,58 @@ const saved = (): ActionState => {
   return { error: null };
 };
 
-/** The hospital's own facts, typed in; its pin on the map is looked up again when its address changed. */
-export async function saveProfile(_previous: ActionState, data: FormData): Promise<ActionState> {
+const PROFILE_FIELDS = ["name", "ownership", "beds", "address", "city", "province"] as const;
+
+export type ProfileField = (typeof PROFILE_FIELDS)[number];
+
+/** One of the hospital's own facts, typed in where it's shown; its pin on the map follows the name and address. */
+export async function saveProfileField(hospitalId: string, field: ProfileField, value: string): Promise<ActionState> {
   const supabase = await createClient();
   const denied = await requireUser(supabase);
   if (denied) return { error: denied };
+  if (!PROFILE_FIELDS.includes(field)) return { error: "Data tidak dikenal." };
 
-  const id = text(data, "hospital_id");
-  const name = text(data, "name");
-  if (!name) return { error: "Nama rumah sakit harus diisi." };
-  const ownership = text(data, "ownership");
-  if (ownership && !OWNERSHIPS.includes(ownership)) return { error: "Kepemilikan tidak dikenal." };
-  const beds = whole(data, "beds");
-  if (beds === undefined) return { error: "Jumlah tempat tidur harus bilangan bulat." };
+  const raw = value.trim();
+  let column: Record<string, string | number | null> = { [field]: raw };
+  if (field === "name" && !raw) return { error: "Nama rumah sakit harus diisi." };
+  if (field === "ownership") {
+    if (raw && !OWNERSHIPS.includes(raw as (typeof OWNERSHIPS)[number])) return { error: "Kepemilikan tidak dikenal." };
+    column = { ownership: raw || null };
+  }
+  if (field === "beds") {
+    const beds = wholeNumber(raw);
+    if (beds === undefined) return { error: "Jumlah tempat tidur harus bilangan bulat." };
+    column = { beds: beds ?? 0 };
+  }
 
-  const { error } = await supabase
-    .from("hospitals")
-    .update({
-      name,
-      ownership: ownership || null,
-      city: text(data, "city"),
-      province: text(data, "province"),
-      address: text(data, "address"),
-      beds: beds ?? 0,
-    })
-    .eq("id", id);
+  const { error } = await supabase.from("hospitals").update(column).eq("id", hospitalId);
   if (error) return { error: saveError(error) };
-  after(() => geocodeHospital(supabase, id));
+  if (field !== "ownership" && field !== "beds") after(() => geocodeHospital(supabase, hospitalId));
   return saved();
 }
 
-/** The published document's version and the year its tariffs are for. */
-export async function saveBook(_previous: ActionState, data: FormData): Promise<ActionState> {
+export type BookField = "version" | "year";
+
+/** The published document's version, or the year its tariffs are for, typed in where it's shown. */
+export async function saveBookField(bookId: string, field: BookField, value: string): Promise<ActionState> {
   const supabase = await createClient();
   const denied = await requireUser(supabase);
   if (denied) return { error: denied };
 
-  const version = text(data, "version");
-  if (!version) return { error: "Versi harus diisi." };
-  const year = whole(data, "year");
-  if (year === undefined || (year !== null && (year < 1990 || year > 2100))) return { error: "Tahun tarif tidak valid." };
+  const raw = value.trim();
+  let column: Record<string, string | null>;
+  if (field === "version") {
+    if (!raw) return { error: "Versi harus diisi." };
+    column = { version: raw };
+  } else if (field === "year") {
+    const year = wholeNumber(raw);
+    if (year === undefined || (year !== null && (year < 1990 || year > 2100))) return { error: "Tahun tarif tidak valid." };
+    column = { valid_from: year ? `${year}-01-01` : null, valid_to: year ? `${year}-12-31` : null };
+  } else {
+    return { error: "Data tidak dikenal." };
+  }
 
-  const { error } = await supabase
-    .from("tariff_books")
-    .update({ version, valid_from: year ? `${year}-01-01` : null, valid_to: year ? `${year}-12-31` : null })
-    .eq("id", text(data, "book_id"));
+  const { error } = await supabase.from("tariff_books").update(column).eq("id", bookId);
   if (error) return { error: saveError(error) };
   return saved();
 }

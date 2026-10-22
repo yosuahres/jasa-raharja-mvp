@@ -10,7 +10,7 @@ import type { TariffBook, TariffLine } from "@/lib/data/types";
 import { formatRange, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-import { TariffRowSheet } from "./tariff-row-sheet";
+import { TariffRowDialog } from "./tariff-row-dialog";
 
 const formatLinePrice = (line: TariffLine) => {
   if (line.priceMin === null || line.priceMax === null) return "—";
@@ -82,7 +82,7 @@ export function TariffLinesTable({
         <Suspense>
           <UrlSearchInput param="cari" label="Cari baris" value={query} placeholder="Cari nama tindakan atau layanan" className="max-w-sm flex-1" />
         </Suspense>
-        <TariffRowSheet hospitalId={hospitalId} hasBook />
+        <TariffRowDialog hospitalId={hospitalId} hasBook />
       </div>
       <div className="-mx-4">
         <Table>

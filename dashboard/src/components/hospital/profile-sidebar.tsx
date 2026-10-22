@@ -27,13 +27,12 @@ import type { HospitalSummary } from "@/lib/scoring";
 import { bookYear, type Completeness } from "@/lib/tariff-book";
 import { cn } from "@/lib/utils";
 
-import { EditBookSheet } from "./edit-book-sheet";
-import { EditProfileSheet } from "./edit-profile-sheet";
+import { BookFact, ProfileFact } from "./editable-facts";
 
 const ACTION =
   "flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md bg-muted px-2 text-xs text-foreground transition-colors outline-none hover:bg-muted/70 focus-visible:ring-3 focus-visible:ring-ring/50";
 
-/** The hospital page's left pane: its name and actions, then every fact about it in foldable sections. */
+/** The hospital page's left pane: its name and actions, then every fact about it in foldable sections; the profile and document facts are edited in place. */
 export function ProfileSidebar({
   summary,
   peer,
@@ -53,7 +52,9 @@ export function ProfileSidebar({
   return (
     <>
       <div className="flex flex-col gap-2 border-b px-4 pt-2.5 pb-3">
-        <h1 className="text-base leading-snug font-semibold text-balance break-words">{hospital.name}</h1>
+        <h1 className="text-base leading-snug font-semibold text-balance break-words">
+          <ProfileFact hospitalId={hospital.id} field="name" value={hospital.name} />
+        </h1>
         <div className="flex w-full items-stretch gap-2">
           <Link
             href={`/bandingkan?rs=${compareIds.join(",")}`}
@@ -103,7 +104,7 @@ export function ProfileSidebar({
         <ScoreParameters parameters={summary.parameters} total={summary.servicesScore} />
       </Section>
 
-      <Section title="Profil" action={<EditProfileSheet hospital={hospital} />}>
+      <Section title="Profil">
         <Field icon={Store} label="Loket">
           {hospital.jasaRaharja ? (
             <>
@@ -117,30 +118,30 @@ export function ProfileSidebar({
           )}
         </Field>
         <Field icon={Landmark} label="Kepemilikan">
-          {hospital.ownership}
+          <ProfileFact hospitalId={hospital.id} field="ownership" value={hospital.ownership ?? ""} />
         </Field>
         <Field icon={BedDouble} label="Tempat tidur">
-          {hospital.beds > 0 && <span className="tabular-nums">{hospital.beds.toLocaleString("id-ID")}</span>}
+          <ProfileFact hospitalId={hospital.id} field="beds" value={hospital.beds > 0 ? String(hospital.beds) : ""} />
         </Field>
         <Field icon={MapPin} label="Alamat">
-          {hospital.address}
+          <ProfileFact hospitalId={hospital.id} field="address" value={hospital.address} />
         </Field>
         <Field icon={Building} label="Kota">
-          {hospital.city}
+          <ProfileFact hospitalId={hospital.id} field="city" value={hospital.city} />
         </Field>
         <Field icon={MapIcon} label="Provinsi">
-          {hospital.province}
+          <ProfileFact hospitalId={hospital.id} field="province" value={hospital.province} />
         </Field>
       </Section>
 
-      <Section title="Data tarif" action={book && <EditBookSheet book={book} />}>
+      <Section title="Data tarif">
         {book ? (
           <>
             <Field icon={FileText} label="Versi">
-              {book.version}
+              <BookFact bookId={book.id} field="version" value={book.version} />
             </Field>
             <Field icon={CalendarRange} label="Tahun tarif">
-              {bookYear(book) ?? <span className="text-muted-foreground">Tidak tercetak di dokumen</span>}
+              <BookFact bookId={book.id} field="year" value={String(bookYear(book) ?? "")} />
             </Field>
           </>
         ) : (
@@ -158,14 +159,13 @@ export function ProfileSidebar({
   );
 }
 
-/** A foldable section; `action` sits at the right of its header without folding it. */
-function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+/** A foldable section. */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <details open className="group/section border-b">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-2 text-sm transition-colors outline-none hover:bg-accent/50 focus-visible:bg-accent/50 [&::-webkit-details-marker]:hidden">
         <span className="truncate">{title}</span>
         <ChevronDown className="size-3.5 shrink-0 -rotate-90 text-muted-foreground transition-transform group-open/section:rotate-0" />
-        {action && <span className="ml-auto flex items-center">{action}</span>}
       </summary>
       <dl className="flex flex-col gap-2 px-4 pb-4 text-sm">{children}</dl>
     </details>

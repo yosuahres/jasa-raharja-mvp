@@ -6,7 +6,7 @@ import { saveResource } from "@/app/(dashboard)/rumah-sakit/[id]/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-import { FormField, FormSheet, NativeSelect } from "./form-sheet";
+import { FormDialog, FormField, NativeSelect } from "./form-dialog";
 
 export type ResourceKind = "fasilitas" | "tenaga-medis";
 
@@ -19,10 +19,10 @@ const COPY: Record<ResourceKind, { title: string; item: string; count: string; c
 export type ResourceValue = { count: number | null; roundTheClock: boolean | null };
 
 /**
- * Adds a facility or specialist to the hospital, or changes one it has. With `itemId` the sheet is
+ * Adds a facility or specialist to the hospital, or changes one it has. With `itemId` the dialog is
  * about that one item; without it, the person picks one from the catalog.
  */
-export function ResourceSheet({
+export function ResourceDialog({
   hospitalId,
   kind,
   options,
@@ -55,7 +55,7 @@ export function ResourceSheet({
   );
 
   return (
-    <FormSheet
+    <FormDialog
       trigger={trigger}
       title={editing ? `Ubah ${item?.name ?? copy.item.toLowerCase()}` : `Tambah ${copy.title.toLowerCase()}`}
       description={editing ? undefined : `${copy.item} yang dimiliki rumah sakit ini.`}
@@ -98,6 +98,6 @@ export function ResourceSheet({
           <option value="tidak">Tidak</option>
         </NativeSelect>
       </FormField>
-    </FormSheet>
+    </FormDialog>
   );
 }

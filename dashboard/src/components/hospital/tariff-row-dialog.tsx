@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CATEGORIES } from "@/lib/categories";
 
-import { FormField, FormSheet, NativeSelect } from "./form-sheet";
+import { FormDialog, FormField, NativeSelect } from "./form-dialog";
 
 /** Types a tariff row in, to go with the hospital's document (or start one when it has none). */
-export function TariffRowSheet({ hospitalId, hasBook }: { hospitalId: string; hasBook: boolean }) {
+export function TariffRowDialog({ hospitalId, hasBook }: { hospitalId: string; hasBook: boolean }) {
   return (
-    <FormSheet
+    <FormDialog
       trigger={
         <Button variant="outline" size="sm">
           <Plus data-icon="inline-start" />
@@ -48,6 +48,6 @@ export function TariffRowSheet({ hospitalId, hasBook }: { hospitalId: string; ha
           <Input id="unit" name="unit" placeholder="mis. /tindakan" />
         </FormField>
       </div>
-    </FormSheet>
+    </FormDialog>
   );
 }

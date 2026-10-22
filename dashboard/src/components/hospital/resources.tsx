@@ -21,7 +21,7 @@ import {
 import type { Catalog, Hospital } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
 
-import { type ResourceKind, ResourceSheet, type ResourceValue } from "./resource-sheet";
+import { type ResourceKind, ResourceDialog, type ResourceValue } from "./resource-dialog";
 
 const FACILITY_ICON: Record<string, LucideIcon> = {
   igd: Siren,
@@ -81,7 +81,7 @@ export const staffItems = (hospital: Hospital, catalog: Catalog): ResourceItem[]
 
 /**
  * Facilities or specialists as a compact list; what's missing stays listed, greyed out, so gaps are
- * easy to spot. Each can be typed in or changed from a sheet.
+ * easy to spot. Each can be typed in or changed from a dialog.
  */
 export function ResourceList({
   hospitalId,
@@ -98,7 +98,7 @@ export function ResourceList({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex justify-end">
-        <ResourceSheet hospitalId={hospitalId} kind={kind} options={options.filter((o) => !items.find((i) => i.id === o.id)?.present)} />
+        <ResourceDialog hospitalId={hospitalId} kind={kind} options={options.filter((o) => !items.find((i) => i.id === o.id)?.present)} />
       </div>
       <ul className="divide-y text-sm">
         {items.map((item) => (
@@ -139,7 +139,7 @@ function ResourceRow({
       ) : (
         <span className="shrink-0 text-xs text-muted-foreground">Tidak tersedia</span>
       )}
-      <ResourceSheet hospitalId={hospitalId} kind={kind} options={options} itemId={item.id} value={value} />
+      <ResourceDialog hospitalId={hospitalId} kind={kind} options={options} itemId={item.id} value={value} />
     </li>
   );
 }

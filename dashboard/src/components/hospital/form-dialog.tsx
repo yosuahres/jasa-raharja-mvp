@@ -7,18 +7,18 @@ import toast from "react-hot-toast";
 import type { ActionState } from "@/app/(dashboard)/rumah-sakit/[id]/actions";
 import { Notice } from "@/components/input/step-layout";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 const EMPTY: ActionState = { error: null };
 
 /**
- * A side sheet holding one form that a server action saves. The trigger opens it without letting
- * the click reach what's around it (a foldable section's summary, a table row). The sheet closes
- * on a save and says so; an error stays in the sheet.
+ * A dialog in the middle of the screen holding one form that a server action saves. The trigger
+ * opens it without letting the click reach what's around it (a foldable section's summary, a table
+ * row). The dialog closes on a save and says so; an error stays in the dialog.
  */
-export function FormSheet({
+export function FormDialog({
   trigger,
   title,
   description,
@@ -48,7 +48,7 @@ export function FormSheet({
     return result;
   }, EMPTY);
 
-  const openSheet = (event: React.MouseEvent) => {
+  const openDialog = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
     setOpen(true);
@@ -56,28 +56,29 @@ export function FormSheet({
 
   return (
     <>
-      {cloneElement(trigger, { onClick: openSheet })}
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="w-full sm:max-w-md">
-          <form action={submit} className="flex min-h-0 flex-1 flex-col">
-            <SheetHeader className="pr-12">
-              <SheetTitle>{title}</SheetTitle>
-              {description && <SheetDescription>{description}</SheetDescription>}
-            </SheetHeader>
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
+      {cloneElement(trigger, { onClick: openDialog })}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <form action={submit} className="flex min-h-0 flex-col gap-4">
+            <DialogHeader className="pr-8">
+              <DialogTitle>{title}</DialogTitle>
+              {description && <DialogDescription>{description}</DialogDescription>}
+            </DialogHeader>
+            {/* Scrolls when taller than the screen; the padding keeps focus rings from being cut off. */}
+            <div className="-m-1 flex max-h-[min(60vh,32rem)] min-h-0 flex-col gap-4 overflow-y-auto p-1">
               {state.error && <Notice tone="error">{state.error}</Notice>}
               {children}
             </div>
-            <SheetFooter className="flex-row justify-end border-t">
+            <DialogFooter>
               {secondary}
               <Button type="submit" disabled={pending}>
                 {pending && <Loader2 className="animate-spin motion-reduce:animate-none" />}
                 {pending ? "Menyimpan…" : submitLabel}
               </Button>
-            </SheetFooter>
+            </DialogFooter>
           </form>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

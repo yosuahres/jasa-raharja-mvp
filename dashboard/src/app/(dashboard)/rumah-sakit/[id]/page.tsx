@@ -6,7 +6,7 @@ import { DetailTabs } from "@/components/hospital/detail-tabs";
 import { ProfileSidebar } from "@/components/hospital/profile-sidebar";
 import { facilityItems, ResourceList, staffItems } from "@/components/hospital/resources";
 import { TARIFF_PAGE_SIZE, TariffLinesTable } from "@/components/hospital/tariff-book";
-import { TariffRowSheet } from "@/components/hospital/tariff-row-sheet";
+import { TariffRowDialog } from "@/components/hospital/tariff-row-dialog";
 import { CATEGORIES, type CategoryId } from "@/lib/categories";
 import { getBookLines, getBookRowStats, getDataset } from "@/lib/data/queries";
 import type { Dataset, Hospital } from "@/lib/data/types";
@@ -71,7 +71,7 @@ export default async function HospitalPage({ params, searchParams }: PageProps<"
             ) : (
               <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">
                 Belum ada data
-                <TariffRowSheet hospitalId={hospital.id} hasBook={false} />
+                <TariffRowDialog hospitalId={hospital.id} hasBook={false} />
               </div>
             ),
           fasilitas: <ResourceList hospitalId={hospital.id} kind="fasilitas" items={facilities} roundTheClockLabel="24 jam" />,
