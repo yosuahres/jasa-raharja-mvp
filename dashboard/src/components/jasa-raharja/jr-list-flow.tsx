@@ -7,14 +7,11 @@ import { useState, useTransition } from "react";
 import toast from "react-hot-toast";
 
 import { uploadJrList } from "@/app/(dashboard)/input/jr-list-actions";
-import { afterKind, ImportShell, type ImportStep } from "@/components/input/import-shell";
+import { ImportShell } from "@/components/input/import-shell";
 import { UploadForm } from "@/components/input/upload-form";
 import { buttonVariants } from "@/components/ui/button";
 
-export const JR_LIST_STEPS: ImportStep[] = afterKind([
-  { id: 1, label: "Unggah" },
-  { id: 2, label: "Periksa tautan" },
-]);
+import { JR_LIST_STEPS } from "./jr-list-steps";
 
 /** Where the uploaded list is checked against the hospitals in the app. */
 export const JR_REVIEW_HREF = "/input?jenis=daftar-rs&tahap=periksa";

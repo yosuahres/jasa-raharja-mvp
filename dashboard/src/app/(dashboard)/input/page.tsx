@@ -3,7 +3,8 @@ import type { Metadata } from "next";
 import { InputKindStep } from "@/components/input/input-kind";
 import { TariffImportFlow } from "@/components/input/tariff-import-flow";
 import { ImportShell } from "@/components/input/import-shell";
-import { JR_LIST_STEPS, JrListFlow } from "@/components/jasa-raharja/jr-list-flow";
+import { JrListFlow } from "@/components/jasa-raharja/jr-list-flow";
+import { JR_LIST_STEPS } from "@/components/jasa-raharja/jr-list-steps";
 import { JrListSection, loketsOf } from "@/components/jasa-raharja/jr-list-section";
 import { getHospitals, getJrHospitals, getUnfinishedUploads } from "@/lib/data/queries";
 

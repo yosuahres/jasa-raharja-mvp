@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { JR_LIST_STEPS } from "@/components/jasa-raharja/jr-list-flow";
+import { JR_LIST_STEPS } from "@/components/jasa-raharja/jr-list-steps";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
